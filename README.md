@@ -1,5 +1,5 @@
 # Lockin-Inator
-Lockin-Inator is a minimalist Android focus app inspired by the goofy “-inator” style of Dr. Doofenshmirtz. It helps you lock in, avoid distractions, and track study sessions with a clean timer system.
+Lockin-Inator is a minimalist Android focus app inspired by the goofy “-inator” style of Dr. Doofenshmirtz. It helps you lock in, avoid distractions, and track study sessions with a clean timer system. All you need to do is create a study mode that disables notifications and apps when "Lockin-Inator" is opened.
 
 🚀 Lockin-Inator
 
