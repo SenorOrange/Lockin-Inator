@@ -1,6 +1,6 @@
-🔒 Lock-Inator
+🔒 Lockin-Inator
 
-Lock-Inator helps you lock in, avoid distractions, and track your study sessions with a simple timer and smart focus controls.
+Lockin-Inator helps you lock in, avoid distractions, and track your study sessions with a simple timer and smart focus controls.
 It disables notifications, pins your screen, and keeps you in study mode until your session ends — no escape until you’re done.
 
 ----- 🚀 Features -----
