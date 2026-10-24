@@ -1,92 +1,64 @@
-🔒 Lockin-Inator
+# 🔒 Lockin-Inator
 
-Lockin-Inator helps you lock in, avoid distractions, and track your study sessions with a simple timer and smart focus controls.
-It disables notifications, pins your screen, and keeps you in study mode until your session ends — no escape until you’re done.
+Lockin-Inator helps you lock in, avoid algorithmic distractions, and stay productive with an advanced distraction shield and study timer.
+It combines an intelligent Accessibility Shield that blocks endless doomscrolling on Instagram, YouTube, and Facebook with an unbreakable Study Mode timer.
 
------ 🚀 Features -----
+---
 
-🕒 Adjustable study timer (1 second – 120 minutes)
+## 🚀 Features
 
-⏳ Extra time tracking when you go beyond your set timer
+### 🛡️ Smart Distraction Shield (Accessibility Service)
+- **Instagram Auto-Switch to Messages**: Automatically routes Instagram to your Direct Messages inbox, preventing feed doomscrolling while keeping chats accessible.
+- **Friend Reel Playback**: Watch, loop, and enjoy reels sent directly by friends in DMs without interruptions.
+- **Endless Scroll / Blend Interception**: Attempts to swipe away into endless recommended reels are instantly intercepted and returned to chat.
+- **In-Chat Media Freedom**: Full support for selecting and capturing photos/camera in DMs without getting kicked out.
+- **Short-Form Video Blocker**: Automatically closes YouTube Shorts and Facebook Reels.
+- **Intercept Counter**: Live on-device tracking of blocked distraction attempts across Instagram, YouTube, and Facebook.
 
-🔕 Automatic Do Not Disturb (silences notifications while you focus)
+### ⏱️ Study Timer & Focus Controls
+- **Adjustable Study Timer**: 1 second – 120 minutes with snap-to-grid slider.
+- **Automatic Do Not Disturb**: Silences incoming notifications while you focus.
+- **Screen Pinning**: Prevents accidentally leaving the app until study mode is stopped.
+- **Fullscreen Lock-In Mode**: Blocks accidental back navigation.
+- **Session Summary Screen**: Displays total study time when your session concludes.
+- **Clean Modern Dark Theme**: Built entirely with Jetpack Compose.
 
-🔒 Screen pinning (prevents leaving the app until you stop manually)
+---
 
-📱 Fullscreen Lock-In mode (blocks back button)
+## 🧠 How It Works
 
-🎨 Clean dark theme throughout
+1. **Activate Distraction Shield**: Enable Lockin-Inator under Accessibility Services for 24/7 background protection.
+2. **Launch Social Apps**: 
+   - Opening Instagram automatically takes you straight to Messages.
+   - Tapping the Reels tab or endless feeds immediately redirects you back to your inbox.
+   - Friends' reels opened from chat play freely; swiping to the next reel returns you to the chat.
+3. **Lock In for Work**:
+   - Set your desired study duration and tap **Activate Study Mode**.
+   - Notifications silence, screen pins, and focus begins.
 
-⚡ Smart slider snapping for easy timer selection
+---
 
-📊 Session summary screen showing total time studied
+## 🛠 Tech Stack
 
-💬 Toasts and feedback when activating/deactivating Lock-In mode
+- **Language**: Kotlin
+- **UI Framework**: Jetpack Compose & Material 3
+- **Architecture**: Android Accessibility Service + SharedPreferences
+- **IDE**: Android Studio
+- **Min SDK**: 26 (Android 8.0 Oreo)
+- **Target SDK**: 36 (Android 16)
 
+---
 
------ 🧠 How It Works -----
+## 📥 Installation
 
-Open Lock-Inator
+1. Download the latest APK from the `recent apk/` folder or Releases.
+2. On your Android device, enable **"Install unknown apps"**.
+3. Install and open **Lockin-Inator**.
+4. Grant **Accessibility Service** permission to enable the Distraction Shield.
+5. (Optional) Grant **Do Not Disturb** and **Screen Pinning** permissions for Study Mode.
 
-Use the slider to set your study duration
+---
 
-Tap Activate Study Mode
+## 📄 License
 
-Screen is pinned
-
-Notifications are silenced
-
-Timer starts
-
-When your session ends, a summary screen appears showing how long you studied
-
-Lock-Inator then closes automatically after a few seconds
-
-
------ 🛠 Tech Stack -----
-
-Language: Kotlin
-
-Framework: Jetpack Compose
-
-IDE: Android Studio
-
-Min SDK: 24 (Android 7.0 Nougat)
-
-Permissions:
-
-Do Not Disturb access (ACCESS_NOTIFICATION_POLICY)
-
-Screen pinning enabled
-
-
------ 📥 Installation -----
-
-Download the latest Lock-Inator APK from the Releases
- page
-
-On your Android device, enable “Install unknown apps”
-
-Launch Lock-Inator
-
-(First time only) Grant Do Not Disturb access when prompted
-
-
------ ⚙️ Usage ------
-
-Tap Activate Study Mode to lock in
-
-Work uninterrupted — notifications and navigation are blocked
-
-Tap Stop Study Mode when finished
-
-See your session summary, then the app closes automatically
-
-
------ 🧩 Planned Updates -----
-
-🔗 NFC tag integration to start/stop sessions
-
-🌗 Fade-in animation for summary screen
-
-📊 Session statistics and history tracking
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

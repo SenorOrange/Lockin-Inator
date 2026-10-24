@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Lockin-Inator</string>
+    <string name="accessibility_service_description">Lockin-Inator automatically blocks Instagram Reels and YouTube Shorts to protect your focus, while keeping Direct Messages and regular videos accessible.</string>
+</resources>
