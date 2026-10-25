@@ -13,6 +13,7 @@ from .process_monitor import ProcessMonitor
 from .shield_overlay import ShieldOverlay
 from .break_pill import BreakPill
 from .settings_dialog import SettingsDialog
+from .dashboard_window import DashboardWindow
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 LOGO_PATH = ASSETS_DIR / "lockin_logo.png"
@@ -43,6 +44,16 @@ class LockinInatorPC(QtCore.QObject):
         self.break_pill = BreakPill()
         self.break_pill.lock_in_early_signal.connect(self.start_study_session)
 
+        # Dashboard Window
+        self.dashboard = DashboardWindow(self.config_manager)
+        self.dashboard.start_study_signal.connect(self.start_study_session)
+        self.dashboard.start_break_signal.connect(self.start_break_session)
+        self.dashboard.pause_signal.connect(self.pause_session)
+        self.dashboard.resume_signal.connect(self.resume_session)
+        self.dashboard.reset_signal.connect(self.reset_session)
+        self.dashboard.open_settings_signal.connect(self._open_settings)
+        self.dashboard.open_guide_signal.connect(self._show_autopilot_guide)
+
         # Timers
         self.clock_timer = QtCore.QTimer(self)
         self.clock_timer.setInterval(1000)
@@ -67,14 +78,32 @@ class LockinInatorPC(QtCore.QObject):
 
         self.tray.setIcon(icon)
         self.tray.setToolTip("Lockin-Inator PC - Focus Assistant")
+        self.tray.activated.connect(self._on_tray_activated)
 
         self.menu = QtWidgets.QMenu()
         self._rebuild_tray_menu()
         self.tray.setContextMenu(self.menu)
         self.tray.show()
 
+    def _on_tray_activated(self, reason):
+        if reason in (
+            QtWidgets.QSystemTrayIcon.ActivationReason.Trigger,
+            QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self.show_dashboard()
+
+    def show_dashboard(self):
+        self.dashboard.show()
+        self.dashboard.raise_()
+        self.dashboard.activateWindow()
+
     def _rebuild_tray_menu(self):
         self.menu.clear()
+
+        # Open Dashboard action
+        action_dash = self.menu.addAction("📱 Open Lockin-Inator Dashboard")
+        action_dash.triggered.connect(self.show_dashboard)
+        self.menu.addSeparator()
 
         # Status item (disabled)
         if self.state == STATE_STUDY:
@@ -138,6 +167,7 @@ class LockinInatorPC(QtCore.QObject):
 
         self._play_sound(winsound.MB_ICONASTERISK)
         self._notify("🔒 Locked In!", f"Study mode started for {duration_minutes} minutes. Claude & Antigravity will keep working in the background.")
+        self.dashboard.update_state(self.state, self.remaining_seconds)
         self._rebuild_tray_menu()
 
     def start_break_session(self, duration_minutes=None):
@@ -154,6 +184,7 @@ class LockinInatorPC(QtCore.QObject):
 
         self._play_sound(winsound.MB_OK)
         self._notify("☕ Break & AI Review Time!", f"You have {duration_minutes} minutes to check Claude/Antigravity and queue your next game dev prompts.")
+        self.dashboard.update_state(self.state, self.remaining_seconds)
         self._rebuild_tray_menu()
 
     def pause_session(self):
@@ -164,6 +195,7 @@ class LockinInatorPC(QtCore.QObject):
             self.monitor_timer.stop()
             self.shield_overlay.hide()
             self._notify("⏸ Paused", "Timer paused. Lockin-Inator focus shield is temporarily disarmed.")
+            self.dashboard.update_state(self.state, self.remaining_seconds)
             self._rebuild_tray_menu()
 
     def resume_session(self):
@@ -175,7 +207,18 @@ class LockinInatorPC(QtCore.QObject):
             elif self.state == STATE_BREAK:
                 self.break_pill.show_pill(self.remaining_seconds)
             self._notify("▶ Resumed", "Timer resumed.")
+            self.dashboard.update_state(self.state, self.remaining_seconds)
             self._rebuild_tray_menu()
+
+    def reset_session(self):
+        self.state = STATE_IDLE
+        self.clock_timer.stop()
+        self.monitor_timer.stop()
+        self.shield_overlay.hide()
+        self.break_pill.hide()
+        self.remaining_seconds = self.config_manager.get("study_duration_minutes", 50) * 60
+        self.dashboard.update_state(self.state, self.remaining_seconds)
+        self._rebuild_tray_menu()
 
     def _on_clock_tick(self):
         if self.remaining_seconds > 0:
@@ -193,6 +236,9 @@ class LockinInatorPC(QtCore.QObject):
                 self.tray.setToolTip(f"Lockin-Inator: AI Review ({mins:02d}:{secs:02d} left)")
                 if self.break_pill.isVisible():
                     self.break_pill.update_timer(self.remaining_seconds)
+
+            if self.dashboard.isVisible():
+                self.dashboard.update_state(self.state, self.remaining_seconds)
         else:
             # Timer reached zero!
             if self.state == STATE_STUDY:

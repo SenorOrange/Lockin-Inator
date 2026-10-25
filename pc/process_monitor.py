@@ -25,6 +25,14 @@ class ProcessMonitor:
         """
         Returns (hwnd, pid, process_name, window_title) of current foreground window.
         """
+        # Ensure thread is attached to the active input desktop if possible
+        try:
+            hdesk = user32.OpenInputDesktop(0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
         hwnd = user32.GetForegroundWindow()
         if not hwnd:
             return None, None, None, None

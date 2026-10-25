@@ -25,6 +25,9 @@ def main():
 
     controller = LockinInatorPC(app)
 
+    # Always show dashboard window so the user sees the app is open
+    controller.show_dashboard()
+
     # Optional: start study session right away if run with --start flag
     if "--start" in sys.argv:
         controller.start_study_session()

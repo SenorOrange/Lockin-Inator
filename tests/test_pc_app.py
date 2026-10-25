@@ -15,6 +15,7 @@ from pc.config import ConfigManager, DEFAULT_CONFIG
 from pc.process_monitor import ProcessMonitor
 from pc.shield_overlay import ShieldOverlay
 from pc.break_pill import BreakPill
+from pc.dashboard_window import DashboardWindow
 from pc.tray_app import LockinInatorPC, STATE_IDLE, STATE_STUDY, STATE_BREAK, STATE_PAUSED
 
 
@@ -78,6 +79,27 @@ def test_break_pill_timer(qapp):
 
     pill.update_timer(59)  # 59s
     assert pill.timer_label.text() == "AI Review: 00:59"
+
+
+def test_dashboard_window(qapp, tmp_path):
+    cfg_file = tmp_path / "test_dash_config.json"
+    mgr = ConfigManager(config_path=cfg_file)
+    dash = DashboardWindow(mgr)
+
+    # Preset selection
+    dash._select_preset(25)
+    assert dash.selected_duration == 25
+    assert dash.timer_label.text() == "25:00"
+
+    # State update
+    dash.update_state("STUDY", 25 * 60)
+    assert "STUDY MODE ACTIVE" in dash.badge_status.text()
+
+    dash.update_state("BREAK", 10 * 60)
+    assert "AI REVIEW WINDOW" in dash.badge_status.text()
+
+    dash.update_state("IDLE", 50 * 60)
+    assert "IDLE" in dash.badge_status.text()
 
 
 def test_state_transitions(qapp, tmp_path):
