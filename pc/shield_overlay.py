@@ -125,7 +125,7 @@ class SingleScreenShield(QtWidgets.QWidget):
                     background-color: #1e40af;
                 }
             """)
-            self.btn_back.clicked.connect(self.back_to_study_signal.emit)
+            self.btn_back.clicked.connect(self._on_back_clicked)
             card_layout.addWidget(self.btn_back)
 
             # High-friction emergency unlock challenge
@@ -150,21 +150,29 @@ class SingleScreenShield(QtWidgets.QWidget):
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
-        painter.fillRect(self.rect(), QtGui.QColor(15, 23, 42, 230))
+        try:
+            painter.fillRect(self.rect(), QtGui.QColor(15, 23, 42, 235))
+        finally:
+            painter.end()
 
     def update_timer(self, remaining_seconds: int):
         mins, secs = divmod(max(0, remaining_seconds), 60)
         self.timer_label.setText(f"{mins:02d}:{secs:02d}")
 
+    def _on_back_clicked(self):
+        # Post via timer queue so Qt finishes handling the click event cleanly
+        QtCore.QTimer.singleShot(0, self.back_to_study_signal.emit)
+
     def _open_friction_challenge(self):
         dlg = FrictionChallengeDialog(self, delay_seconds=15)
         if dlg.exec():
-            self.emergency_unlock_signal.emit()
+            QtCore.QTimer.singleShot(50, self.emergency_unlock_signal.emit)
 
 
 class MultiScreenShield(QtCore.QObject):
     """
     Coordinates simultaneous full-screen focus shields across all connected monitors.
+    Maintains persistent window instances to avoid Qt allocation churn and crashes.
     """
     back_to_study_signal = QtCore.pyqtSignal()
     emergency_unlock_signal = QtCore.pyqtSignal()
@@ -176,6 +184,24 @@ class MultiScreenShield(QtCore.QObject):
         self.blocked_app_name = ""
         self.remaining_seconds = 0
         self._is_visible = False
+        self._init_windows()
+
+    def _init_windows(self):
+        for w in self.windows:
+            w.hide()
+            w.deleteLater()
+        self.windows.clear()
+
+        screens = QtGui.QGuiApplication.screens()
+        primary_screen = QtGui.QGuiApplication.primaryScreen()
+
+        for s in screens:
+            is_primary = (s == primary_screen)
+            w = SingleScreenShield(s, is_interactive=is_primary)
+            if is_primary:
+                w.back_to_study_signal.connect(self.back_to_study_signal.emit)
+                w.emergency_unlock_signal.connect(self.emergency_unlock_signal.emit)
+            self.windows.append(w)
 
     def isVisible(self):
         return self._is_visible
@@ -185,28 +211,22 @@ class MultiScreenShield(QtCore.QObject):
         self.blocked_app_name = app_name
         self.remaining_seconds = remaining_seconds
 
-        # Close existing windows if any
-        self.hide_shield()
-
+        # Ensure windows match current screen count
         screens = QtGui.QGuiApplication.screens()
+        if len(screens) != len(self.windows):
+            self._init_windows()
+
         primary_screen = QtGui.QGuiApplication.primaryScreen()
+        clean_name = app_name.replace(".exe", "").capitalize()
 
-        for s in screens:
-            is_primary = (s == primary_screen)
-            w = SingleScreenShield(s, is_interactive=is_primary)
+        for w in self.windows:
             w.update_timer(remaining_seconds)
-
-            if is_primary:
-                w.back_to_study_signal.connect(self.back_to_study_signal.emit)
-                w.emergency_unlock_signal.connect(self.emergency_unlock_signal.emit)
-                clean_name = app_name.replace(".exe", "").capitalize()
+            if w.is_interactive:
                 w.badge_label.setText(f"Locked App: {clean_name}")
-
             w.show()
             w.raise_()
-            if is_primary:
+            if w.target_screen == primary_screen:
                 w.activateWindow()
-            self.windows.append(w)
 
         self._is_visible = True
 
@@ -218,8 +238,6 @@ class MultiScreenShield(QtCore.QObject):
     def hide_shield(self):
         for w in self.windows:
             w.hide()
-            w.deleteLater()
-        self.windows.clear()
         self._is_visible = False
 
     def hide(self):

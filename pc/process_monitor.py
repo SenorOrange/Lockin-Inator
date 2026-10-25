@@ -5,6 +5,7 @@ gain focus during a study session, without stopping their background execution.
 """
 import ctypes
 from ctypes import wintypes
+import time
 import psutil
 from typing import Optional, Tuple
 
@@ -16,6 +17,13 @@ class ProcessMonitor:
     def __init__(self, blocked_processes=None):
         self.blocked_processes = [p.lower() for p in (blocked_processes or [])]
         self._pid_cache = {}
+        self.cooldown_until = 0.0
+
+    def trigger_cooldown(self, seconds: float = 1.0):
+        self.cooldown_until = time.time() + seconds
+
+    def is_in_cooldown(self) -> bool:
+        return time.time() < self.cooldown_until
 
     def update_blocked_processes(self, blocked_processes):
         self.blocked_processes = [p.lower() for p in (blocked_processes or [])]

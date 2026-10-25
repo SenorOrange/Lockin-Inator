@@ -265,6 +265,9 @@ class LockinInatorPC(QtCore.QObject):
         if self.state != STATE_STUDY:
             return
 
+        if self.process_monitor.is_in_cooldown():
+            return
+
         hwnd, pid, pname, title = self.process_monitor.get_foreground_info()
         if not pname:
             return
@@ -279,6 +282,7 @@ class LockinInatorPC(QtCore.QObject):
                 self.shield_overlay.show_shield(hwnd, pname, self.remaining_seconds)
 
     def _handle_back_to_study(self):
+        self.process_monitor.trigger_cooldown(1.5)
         self.shield_overlay.hide_shield()
         if self.current_blocked_hwnd:
             self.process_monitor.minimize_window(self.current_blocked_hwnd)
