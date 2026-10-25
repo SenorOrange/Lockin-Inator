@@ -12,6 +12,7 @@ from .config import ConfigManager
 from .process_monitor import ProcessMonitor
 from .shield_overlay import MultiScreenShield
 from .break_pill import BreakPill
+from .floating_timer import FloatingTimerWidget
 from .settings_dialog import SettingsDialog
 from .dashboard_window import DashboardWindow
 
@@ -41,8 +42,11 @@ class LockinInatorPC(QtCore.QObject):
         self.shield_overlay.back_to_study_signal.connect(self._handle_back_to_study)
         self.shield_overlay.emergency_unlock_signal.connect(self._handle_emergency_unlock)
 
-        self.break_pill = BreakPill()
-        self.break_pill.lock_in_early_signal.connect(self.start_study_session)
+        # On-screen floating timer widget (compact, draggable pill)
+        self.floating_widget = FloatingTimerWidget()
+        self.floating_widget.lock_in_early_signal.connect(self.start_study_session)
+        self.floating_widget.open_dashboard_signal.connect(self.show_dashboard)
+        self.break_pill = self.floating_widget  # backwards compatibility
 
         # Dashboard Window
         self.dashboard = DashboardWindow(self.config_manager)
@@ -157,7 +161,7 @@ class LockinInatorPC(QtCore.QObject):
             duration_minutes = self.config_manager.get("study_duration_minutes", 50)
         self.state = STATE_STUDY
         self.remaining_seconds = duration_minutes * 60
-        self.break_pill.hide()
+        self.floating_widget.show_widget(self.state, self.remaining_seconds)
 
         self.clock_timer.start()
         self.monitor_timer.start()
@@ -175,7 +179,7 @@ class LockinInatorPC(QtCore.QObject):
 
         self.monitor_timer.stop()
         self.shield_overlay.hide_shield()
-        self.break_pill.show_pill(self.remaining_seconds)
+        self.floating_widget.show_widget(self.state, self.remaining_seconds)
 
         self.clock_timer.start()
 
@@ -191,6 +195,7 @@ class LockinInatorPC(QtCore.QObject):
             self.clock_timer.stop()
             self.monitor_timer.stop()
             self.shield_overlay.hide_shield()
+            self.floating_widget.hide()
             self._notify("⏸ Paused", "Timer paused. Lockin-Inator focus shield is temporarily disarmed.")
             self.dashboard.update_state(self.state, self.remaining_seconds)
             self._rebuild_tray_menu()
@@ -201,8 +206,7 @@ class LockinInatorPC(QtCore.QObject):
             self.clock_timer.start()
             if self.state == STATE_STUDY:
                 self.monitor_timer.start()
-            elif self.state == STATE_BREAK:
-                self.break_pill.show_pill(self.remaining_seconds)
+            self.floating_widget.show_widget(self.state, self.remaining_seconds)
             self._notify("▶ Resumed", "Timer resumed.")
             self.dashboard.update_state(self.state, self.remaining_seconds)
             self._rebuild_tray_menu()
@@ -212,7 +216,7 @@ class LockinInatorPC(QtCore.QObject):
         self.clock_timer.stop()
         self.monitor_timer.stop()
         self.shield_overlay.hide_shield()
-        self.break_pill.hide()
+        self.floating_widget.hide()
         self.remaining_seconds = self.config_manager.get("study_duration_minutes", 50) * 60
         self.dashboard.update_state(self.state, self.remaining_seconds)
         self._rebuild_tray_menu()
@@ -231,8 +235,9 @@ class LockinInatorPC(QtCore.QObject):
             elif self.state == STATE_BREAK:
                 mins, secs = divmod(self.remaining_seconds, 60)
                 self.tray.setToolTip(f"Lockin-Inator: AI Review ({mins:02d}:{secs:02d} left)")
-                if self.break_pill.isVisible():
-                    self.break_pill.update_timer(self.remaining_seconds)
+
+            if self.floating_widget.isVisible():
+                self.floating_widget.update_timer(self.remaining_seconds)
 
             if self.dashboard.isVisible():
                 self.dashboard.update_state(self.state, self.remaining_seconds)
@@ -246,6 +251,7 @@ class LockinInatorPC(QtCore.QObject):
                     self.clock_timer.stop()
                     self.monitor_timer.stop()
                     self.shield_overlay.hide_shield()
+                    self.floating_widget.hide()
                     self._play_sound(winsound.MB_OK)
                     self._notify("🎉 Session Complete", "Study session completed! Great job.")
                     self._rebuild_tray_menu()
@@ -256,7 +262,7 @@ class LockinInatorPC(QtCore.QObject):
                 else:
                     self.state = STATE_IDLE
                     self.clock_timer.stop()
-                    self.break_pill.hide()
+                    self.floating_widget.hide()
                     self._play_sound(winsound.MB_ICONEXCLAMATION)
                     self._notify("⏰ Break Over", "Break time is up. Ready to lock back in?")
                     self._rebuild_tray_menu()
@@ -272,8 +278,12 @@ class LockinInatorPC(QtCore.QObject):
         if not pname:
             return
 
-        # Do not block our own overlay or dialogs
-        if hwnd in self.shield_overlay.get_window_ids():
+        # Do not block our own overlay, floating widget, or dashboard
+        if (
+            hwnd in self.shield_overlay.get_window_ids()
+            or hwnd == int(self.floating_widget.winId())
+            or hwnd == int(self.dashboard.winId())
+        ):
             return
 
         if self.process_monitor.is_blocked(pname):
@@ -331,6 +341,7 @@ class LockinInatorPC(QtCore.QObject):
         self.clock_timer.stop()
         self.monitor_timer.stop()
         self.shield_overlay.hide_shield()
-        self.break_pill.close()
+        self.floating_widget.close()
+        self.dashboard.close()
         self.tray.hide()
         self.app.quit()

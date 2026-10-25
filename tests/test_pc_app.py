@@ -16,6 +16,7 @@ from pc.process_monitor import ProcessMonitor
 from pc.shield_overlay import MultiScreenShield, SingleScreenShield
 from pc.friction_dialog import FrictionChallengeDialog, COMMITMENT_PHRASE
 from pc.break_pill import BreakPill
+from pc.floating_timer import FloatingTimerWidget
 from pc.dashboard_window import DashboardWindow
 from pc.tray_app import LockinInatorPC, STATE_IDLE, STATE_STUDY, STATE_BREAK, STATE_PAUSED
 
@@ -95,10 +96,23 @@ def test_friction_dialog(qapp):
 def test_break_pill_timer(qapp):
     pill = BreakPill()
     pill.update_timer(600)  # 10m
-    assert pill.timer_label.text() == "AI Review: 10:00"
+    assert pill.timer_label.text() == "10:00"
 
     pill.update_timer(59)  # 59s
-    assert pill.timer_label.text() == "AI Review: 00:59"
+    assert pill.timer_label.text() == "00:59"
+
+
+def test_floating_timer_widget(qapp):
+    widget = FloatingTimerWidget()
+    widget.show_widget("STUDY", 50 * 60)
+    assert widget.icon_label.text() == "🔒"
+    assert widget.timer_label.text() == "50:00"
+    assert not widget.btn_lock_in.isVisible()
+
+    widget.show_widget("BREAK", 10 * 60)
+    assert widget.icon_label.text() == "☕"
+    assert widget.timer_label.text() == "10:00"
+    assert widget.btn_lock_in.isVisible()
 
 
 def test_dashboard_window(qapp, tmp_path):
