@@ -1,0 +1,28 @@
+/* ==========================================================================
+   FocusLens YouTube Shield: Eradicates Shorts UI and Shelves
+   ========================================================================== */
+
+/* Hide Shorts in Navigation Sidebars */
+ytd-guide-entry-renderer:has(a[title="Shorts"]),
+ytd-guide-entry-renderer:has(a[href*="/shorts"]),
+ytd-mini-guide-entry-renderer[aria-label="Shorts"],
+ytd-mini-guide-entry-renderer:has(a[href*="/shorts"]),
+a#endpoint[title="Shorts"],
+
+/* Hide Shorts Shelves on Home, Subscriptions, Search, and Channels */
+ytd-rich-shelf-renderer[is-shorts],
+ytd-reel-shelf-renderer,
+ytd-rich-section-renderer:has(ytd-rich-shelf-renderer[is-shorts]),
+ytd-rich-section-renderer:has(ytd-reel-shelf-renderer),
+ytd-rich-grid-renderer ytd-rich-item-renderer:has(a[href*="/shorts/"]),
+ytd-video-renderer:has(a[href*="/shorts/"]),
+
+/* Mobile and Compact layouts */
+ytm-reel-shelf-renderer,
+ytm-pivot-bar-item-renderer:has(div[aria-label="Shorts"]) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}

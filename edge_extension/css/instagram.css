@@ -1,0 +1,49 @@
+/* ==========================================================================
+   Lockin-Inator Instagram Shield: Blocks Home Feed & Reels
+   ========================================================================== */
+
+/* Hide Home Navigation Link & Icon in Left Sidebar */
+a[href="/"]:has(svg[aria-label="Home"]),
+a[role="link"]:has(svg[aria-label="Home"]),
+div[role="button"]:has(svg[aria-label="Home"]),
+
+/* Hide Reels Navigation Link & Icon in Left Sidebar */
+a[href*="/reels/"],
+a[role="link"]:has(svg[aria-label="Reels"]),
+a[role="link"]:has(svg[aria-label="Clips"]),
+div[role="button"]:has(svg[aria-label="Reels"]),
+
+/* Hide Reels in Explore Grids */
+div[role="presentation"]:has(svg[aria-label="Reels"]),
+div:has(> a[href*="/reel/"]),
+
+/* Hide Reels in Home Feed */
+article:has(a[href*="/reel/"]),
+div:has(> div > a[href*="/reel/"]) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Custom Notification Toast */
+#focuslens-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 2147483647;
+    border: 1px solid #c084fc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.3s ease;
+}

@@ -1,0 +1,132 @@
+/* ==========================================================================
+   FocusLens Unskippable Block Screen Styles
+   ========================================================================== */
+
+#focuslens-block-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    background: radial-gradient(circle at center, #1e1b4b 0%, #090d16 100%) !important;
+    z-index: 2147483647 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    color: #f8fafc !important;
+    text-align: center !important;
+    padding: 24px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    user-select: none !important;
+}
+
+.focuslens-card {
+    background: rgba(15, 23, 42, 0.9) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border: 1px solid rgba(239, 68, 68, 0.35) !important;
+    border-radius: 24px !important;
+    padding: 44px 36px !important;
+    max-width: 540px !important;
+    width: 90% !important;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 50px rgba(239, 68, 68, 0.18) !important;
+    animation: focuslens-appear 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes focuslens-appear {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.focuslens-icon {
+    font-size: 54px !important;
+    margin-bottom: 14px !important;
+    display: inline-block !important;
+    filter: drop-shadow(0 0 16px rgba(239, 68, 68, 0.7)) !important;
+}
+
+.focuslens-title {
+    font-size: 26px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    margin: 0 0 8px 0 !important;
+    letter-spacing: -0.5px !important;
+}
+
+.focuslens-subtitle {
+    font-size: 15px !important;
+    color: #cbd5e1 !important;
+    line-height: 1.5 !important;
+    margin: 0 0 22px 0 !important;
+}
+
+.focuslens-info-box {
+    background: rgba(30, 41, 59, 0.75) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
+    padding: 14px 18px !important;
+    font-size: 13px !important;
+    color: #94a3b8 !important;
+    margin-bottom: 26px !important;
+    text-align: left !important;
+    line-height: 1.6 !important;
+}
+
+.focuslens-info-box strong {
+    color: #38bdf8 !important;
+}
+
+.focuslens-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+}
+
+.focuslens-btn-primary {
+    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+    color: #ffffff !important;
+    padding: 13px 20px !important;
+    border-radius: 10px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    border: none !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4) !important;
+    display: block !important;
+}
+
+.focuslens-btn-primary:hover {
+    background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%) !important;
+    box-shadow: 0 6px 18px rgba(79, 70, 229, 0.6) !important;
+    transform: translateY(-1px) !important;
+}
+
+.focuslens-btn-secondary {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+    padding: 11px 20px !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    transition: all 0.2s ease !important;
+    display: block !important;
+}
+
+.focuslens-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.14) !important;
+    color: #ffffff !important;
+}

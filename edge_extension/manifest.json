@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Lockin-Inator - Reels & Shorts Blocker",
+  "version": "1.3.0",
+  "description": "Interrupts and blocks Instagram Reels, Home Feed, and YouTube Shorts with an unskippable focus shield while preserving DMs, search, account profiles, and regular videos.",
+  "permissions": [
+    "storage",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://*.instagram.com/*"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "css": ["css/youtube.css", "css/block_screen.css"],
+      "js": ["scripts/youtube_blocker.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://*.instagram.com/*"],
+      "css": ["css/instagram.css", "css/block_screen.css"],
+      "js": ["scripts/instagram_blocker.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
