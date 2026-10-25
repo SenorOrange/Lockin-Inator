@@ -16,12 +16,17 @@ def test_manifest_is_valid():
 
     assert data["manifest_version"] == 3
     assert "name" in data
-    assert "version" in data
+    assert data["version"] == "1.5.0"
     assert "declarativeNetRequest" in data["permissions"]
+    assert "storage" in data["permissions"]
     assert "declarative_net_request" in data
     assert any("youtube.com" in h for h in data["host_permissions"])
     assert any("instagram.com" in h for h in data["host_permissions"])
-    assert len(data["content_scripts"]) == 2
+    assert any("reddit.com" in h for h in data["host_permissions"])
+    assert any("tiktok.com" in h for h in data["host_permissions"])
+    assert any("twitter.com" in h for h in data["host_permissions"])
+    assert any("x.com" in h for h in data["host_permissions"])
+    assert len(data["content_scripts"]) == 3
     assert "icons" in data
     assert "128" in data["icons"]
 
@@ -50,6 +55,8 @@ def test_extension_assets_exist():
     assert (EXT_DIR / "css" / "block_screen.css").exists()
     assert (EXT_DIR / "scripts" / "youtube_blocker.js").exists()
     assert (EXT_DIR / "scripts" / "instagram_blocker.js").exists()
+    assert (EXT_DIR / "scripts" / "general_blocker.js").exists()
+    assert (EXT_DIR / "scripts" / "sync_client.js").exists()
     assert (EXT_DIR / "icons" / "icon16.png").exists()
     assert (EXT_DIR / "icons" / "icon32.png").exists()
     assert (EXT_DIR / "icons" / "icon48.png").exists()
@@ -61,17 +68,28 @@ def test_block_screen_contains_key_elements():
     assert "#focuslens-block-overlay" in block_css
     assert "z-index: 2147483647" in block_css
     assert ".focuslens-card" in block_css
+    assert ".focuslens-card.study-lockout" in block_css
+    assert ".focuslens-study-timer-digits" in block_css
 
     yt_script = (EXT_DIR / "scripts" / "youtube_blocker.js").read_text(encoding="utf-8")
+    assert "YouTube Blocked During Study" in yt_script
     assert "YouTube Short Blocked" in yt_script
-    assert "Watch as Standard YouTube Video" in yt_script
+    assert "isStudyModeActive" in yt_script
+    assert "showFullStudyOverlay" in yt_script
 
     ig_script = (EXT_DIR / "scripts" / "instagram_blocker.js").read_text(encoding="utf-8")
+    assert "Instagram Blocked During Study" in ig_script
     assert "Instagram Reel Blocked" in ig_script
     assert "Open Direct Messages" in ig_script
-    assert "isHomePage" in ig_script
-    assert "redirectToInbox" in ig_script
-    assert "https://www.instagram.com/direct/inbox/" in ig_script
+    assert "isStudyModeActive" in ig_script
+    assert "showFullStudyOverlay" in ig_script
 
-    ig_css = (EXT_DIR / "css" / "instagram.css").read_text(encoding="utf-8")
-    assert 'svg[aria-label="Home"]' in ig_css
+    gen_script = (EXT_DIR / "scripts" / "general_blocker.js").read_text(encoding="utf-8")
+    assert "Blocked During Study" in gen_script
+    assert "getSiteDisplayName" in gen_script
+    assert "isStudyModeActive" in gen_script
+
+    sync_script = (EXT_DIR / "scripts" / "sync_client.js").read_text(encoding="utf-8")
+    assert "window.LockinSync" in sync_script
+    assert "isStudyMode" in sync_script
+    assert "getBlockedSites" in sync_script

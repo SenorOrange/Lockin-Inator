@@ -3,6 +3,20 @@
     if (window.__focuslens_edge_yt) return;
     window.__focuslens_edge_yt = true;
 
+    function isStudyModeActive() {
+        if (window.LockinSync && typeof window.LockinSync.isStudyMode === 'function') {
+            return window.LockinSync.isStudyMode();
+        }
+        return false;
+    }
+
+    function getFormattedRemainingTime() {
+        if (window.LockinSync && typeof window.LockinSync.getRemainingSeconds === 'function') {
+            return window.LockinSync.formatTime(window.LockinSync.getRemainingSeconds());
+        }
+        return '--:--';
+    }
+
     function killMedia() {
         try {
             var mediaElements = document.querySelectorAll('video, audio');
@@ -21,12 +35,79 @@
         if (document.body) document.body.style.overflow = '';
     }
 
-    function showBlockOverlay(vidId) {
+    function showFullStudyOverlay() {
         killMedia();
-        if (document.getElementById('focuslens-block-overlay')) return;
+        var existing = document.getElementById('focuslens-block-overlay');
+        if (existing) {
+            if (existing.getAttribute('data-overlay-type') === 'full-study') {
+                return;
+            }
+            existing.remove();
+        }
+
+        if (!document.body) {
+            document.addEventListener('DOMContentLoaded', showFullStudyOverlay);
+            return;
+        }
+
+        if (document.documentElement) document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
+
+        var overlay = document.createElement('div');
+        overlay.id = 'focuslens-block-overlay';
+        overlay.setAttribute('data-overlay-type', 'full-study');
+
+        var initialTime = getFormattedRemainingTime();
+
+        overlay.innerHTML = `
+            <div class="focuslens-card study-lockout">
+                <div class="focuslens-icon study">🔒</div>
+                <h1 class="focuslens-title">YouTube Blocked During Study</h1>
+                <p class="focuslens-subtitle">YouTube is completely locked by <strong>Lockin-Inator</strong> while your study session is active.</p>
+                <div class="focuslens-study-timer-box">
+                    <div class="focuslens-study-timer-label">Study Session Time Remaining</div>
+                    <div id="focuslens-live-timer" class="focuslens-study-timer-digits">${initialTime}</div>
+                </div>
+                <div class="focuslens-info-box">
+                    🚀 <strong>Prompts Executing in Background:</strong> Claude and Antigravity are autonomously working on your game builds. Stay in flow! YouTube will unlock during your scheduled 10-minute AI Review break.
+                </div>
+                <div class="focuslens-actions">
+                    <button id="focuslens-close-tab-btn" class="focuslens-btn-primary">⬅️ Close Tab & Return to Studying</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        var closeBtn = document.getElementById('focuslens-close-tab-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                try {
+                    window.close();
+                } catch (err) {}
+                if (window.history.length > 1) {
+                    window.history.back();
+                } else {
+                    window.location.href = 'about:blank';
+                }
+            });
+        }
+    }
+
+    function showShortsBlockOverlay(vidId) {
+        killMedia();
+        var existing = document.getElementById('focuslens-block-overlay');
+        if (existing) {
+            if (existing.getAttribute('data-overlay-type') === 'shorts') {
+                return;
+            }
+            existing.remove();
+        }
+
         if (!document.body) {
             document.addEventListener('DOMContentLoaded', function() {
-                showBlockOverlay(vidId);
+                showShortsBlockOverlay(vidId);
             });
             return;
         }
@@ -36,6 +117,7 @@
 
         var overlay = document.createElement('div');
         overlay.id = 'focuslens-block-overlay';
+        overlay.setAttribute('data-overlay-type', 'shorts');
 
         var watchUrl = vidId ? ('https://www.youtube.com/watch?v=' + vidId) : 'https://www.youtube.com/';
 
@@ -70,15 +152,23 @@
         }
     }
 
-    function checkShorts(url) {
-        if (!url) url = window.location.href;
-        if (url.includes('/shorts/')) {
-            var parts = url.split('/shorts/');
+    function enforceYouTubeRules(url) {
+        var currentUrl = url || window.location.href;
+
+        // MODE 1: STUDY SESSION ACTIVE -> FULL DOMAIN LOCKOUT
+        if (isStudyModeActive()) {
+            showFullStudyOverlay();
+            return;
+        }
+
+        // MODE 2: IDLE OR BREAK -> SELECTIVE BLOCKING (Only Shorts)
+        if (currentUrl.includes('/shorts/')) {
+            var parts = currentUrl.split('/shorts/');
             var vidId = '';
             if (parts.length > 1) {
                 vidId = parts[1].split('?')[0].split('/')[0];
             }
-            showBlockOverlay(vidId);
+            showShortsBlockOverlay(vidId);
         } else {
             removeBlockOverlay();
         }
@@ -90,34 +180,41 @@
 
     history.pushState = function(state, title, url) {
         var res = origPush.apply(this, arguments);
-        if (url) checkShorts(String(url));
+        enforceYouTubeRules(url ? String(url) : window.location.href);
         return res;
     };
 
     history.replaceState = function(state, title, url) {
         var res = origReplace.apply(this, arguments);
-        if (url) checkShorts(String(url));
+        enforceYouTubeRules(url ? String(url) : window.location.href);
         return res;
     };
 
     window.addEventListener('popstate', function() {
-        checkShorts();
+        enforceYouTubeRules();
     });
 
     window.addEventListener('yt-navigate-start', function(e) {
         if (e && e.detail && e.detail.url) {
-            checkShorts(e.detail.url);
+            enforceYouTubeRules(e.detail.url);
         }
     });
 
     // Eradicate dynamically loaded Shorts shelves
     var observer = new MutationObserver(function() {
-        if (window.location.href.includes('/shorts/')) {
+        if (isStudyModeActive()) {
             killMedia();
-        }
-        var shelves = document.querySelectorAll('ytd-rich-shelf-renderer[is-shorts], ytd-reel-shelf-renderer');
-        for (var i = 0; i < shelves.length; i++) {
-            shelves[i].remove();
+            if (!document.getElementById('focuslens-block-overlay')) {
+                showFullStudyOverlay();
+            }
+        } else {
+            if (window.location.href.includes('/shorts/')) {
+                killMedia();
+            }
+            var shelves = document.querySelectorAll('ytd-rich-shelf-renderer[is-shorts], ytd-reel-shelf-renderer');
+            for (var i = 0; i < shelves.length; i++) {
+                shelves[i].remove();
+            }
         }
     });
 
@@ -125,9 +222,24 @@
         observer.observe(document.body, { childList: true, subtree: true });
     } else {
         document.addEventListener('DOMContentLoaded', function() {
-            observer.observe(document.body, { childList: true, subtree: true });
+            if (document.body) {
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+            enforceYouTubeRules();
         });
     }
 
-    checkShorts();
+    // Initial check
+    enforceYouTubeRules();
+
+    // Listen to sync state changes
+    if (window.LockinSync && typeof window.LockinSync.onStateChange === 'function') {
+        window.LockinSync.onStateChange(function() {
+            enforceYouTubeRules();
+        });
+    }
+
+    window.addEventListener('lockin-sync-change', function() {
+        enforceYouTubeRules();
+    });
 })();

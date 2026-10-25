@@ -25,6 +25,20 @@
         return str.includes('/reel/') || str.includes('/reels/');
     }
 
+    function isStudyModeActive() {
+        if (window.LockinSync && typeof window.LockinSync.isStudyMode === 'function') {
+            return window.LockinSync.isStudyMode();
+        }
+        return false;
+    }
+
+    function getFormattedRemainingTime() {
+        if (window.LockinSync && typeof window.LockinSync.getRemainingSeconds === 'function') {
+            return window.LockinSync.formatTime(window.LockinSync.getRemainingSeconds());
+        }
+        return '--:--';
+    }
+
     function redirectToInbox() {
         try {
             window.location.replace(DIRECT_INBOX_URL);
@@ -51,11 +65,18 @@
         if (document.body) document.body.style.overflow = '';
     }
 
-    function showBlockOverlay() {
+    function showFullStudyOverlay() {
         killMedia();
-        if (document.getElementById('focuslens-block-overlay')) return;
+        var existing = document.getElementById('focuslens-block-overlay');
+        if (existing) {
+            if (existing.getAttribute('data-overlay-type') === 'full-study') {
+                return;
+            }
+            existing.remove();
+        }
+
         if (!document.body) {
-            document.addEventListener('DOMContentLoaded', showBlockOverlay);
+            document.addEventListener('DOMContentLoaded', showFullStudyOverlay);
             return;
         }
 
@@ -64,6 +85,67 @@
 
         var overlay = document.createElement('div');
         overlay.id = 'focuslens-block-overlay';
+        overlay.setAttribute('data-overlay-type', 'full-study');
+
+        var initialTime = getFormattedRemainingTime();
+
+        overlay.innerHTML = `
+            <div class="focuslens-card study-lockout">
+                <div class="focuslens-icon study">🔒</div>
+                <h1 class="focuslens-title">Instagram Blocked During Study</h1>
+                <p class="focuslens-subtitle">Instagram is completely locked by <strong>Lockin-Inator</strong> while your study session is active.</p>
+                <div class="focuslens-study-timer-box">
+                    <div class="focuslens-study-timer-label">Study Session Time Remaining</div>
+                    <div id="focuslens-live-timer" class="focuslens-study-timer-digits">${initialTime}</div>
+                </div>
+                <div class="focuslens-info-box">
+                    🚀 <strong>Prompts Executing in Background:</strong> Claude and Antigravity are autonomously working on your game builds. Stay in flow! Instagram will unlock during your scheduled 10-minute AI Review break.
+                </div>
+                <div class="focuslens-actions">
+                    <button id="focuslens-close-tab-btn" class="focuslens-btn-primary">⬅️ Close Tab & Return to Studying</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        var closeBtn = document.getElementById('focuslens-close-tab-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                try {
+                    window.close();
+                } catch (err) {}
+                if (window.history.length > 1) {
+                    window.history.back();
+                } else {
+                    window.location.href = 'about:blank';
+                }
+            });
+        }
+    }
+
+    function showReelBlockOverlay() {
+        killMedia();
+        var existing = document.getElementById('focuslens-block-overlay');
+        if (existing) {
+            if (existing.getAttribute('data-overlay-type') === 'reel') {
+                return;
+            }
+            existing.remove();
+        }
+
+        if (!document.body) {
+            document.addEventListener('DOMContentLoaded', showReelBlockOverlay);
+            return;
+        }
+
+        if (document.documentElement) document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
+
+        var overlay = document.createElement('div');
+        overlay.id = 'focuslens-block-overlay';
+        overlay.setAttribute('data-overlay-type', 'reel');
 
         overlay.innerHTML = `
             <div class="focuslens-card">
@@ -99,6 +181,13 @@
     function enforceBlockRules(url) {
         var currentUrl = url || window.location.href;
 
+        // MODE 1: STUDY SESSION ACTIVE -> FULL DOMAIN LOCKOUT
+        if (isStudyModeActive()) {
+            showFullStudyOverlay();
+            return;
+        }
+
+        // MODE 2: IDLE OR BREAK -> SELECTIVE BLOCKING
         // 1. Block Main Home Page -> Auto-redirect to Messages
         if (isHomePage(currentUrl)) {
             redirectToInbox();
@@ -107,7 +196,7 @@
 
         // 2. Block Reels -> Show Focus Shield
         if (isReelsPage(currentUrl)) {
-            showBlockOverlay();
+            showReelBlockOverlay();
         } else {
             removeBlockOverlay();
         }
@@ -130,6 +219,11 @@
     var origReplace = history.replaceState;
 
     history.pushState = function(state, title, url) {
+        if (isStudyModeActive()) {
+            var res = origPush.apply(this, arguments);
+            enforceBlockRules(url ? String(url) : window.location.href);
+            return res;
+        }
         if (url && isHomePage(String(url))) {
             redirectToInbox();
             return;
@@ -140,6 +234,11 @@
     };
 
     history.replaceState = function(state, title, url) {
+        if (isStudyModeActive()) {
+            var res = origReplace.apply(this, arguments);
+            enforceBlockRules(url ? String(url) : window.location.href);
+            return res;
+        }
         if (url && isHomePage(String(url))) {
             redirectToInbox();
             return;
@@ -155,6 +254,12 @@
 
     // Intercept clicks on links pointing to the Home page or Reels
     document.addEventListener('click', function(e) {
+        if (isStudyModeActive()) {
+            e.preventDefault();
+            e.stopPropagation();
+            showFullStudyOverlay();
+            return;
+        }
         var link = e.target.closest('a');
         if (link && link.href) {
             if (isHomePage(link.href)) {
@@ -166,7 +271,7 @@
             if (isReelsPage(link.href)) {
                 e.preventDefault();
                 e.stopPropagation();
-                showBlockOverlay();
+                showReelBlockOverlay();
                 return;
             }
         }
@@ -175,9 +280,25 @@
     // Initial check right at document_start
     enforceBlockRules();
 
-    // Observe DOM changes to maintain link rewrites and kill media if on Reels
+    // Listen to sync state changes
+    if (window.LockinSync && typeof window.LockinSync.onStateChange === 'function') {
+        window.LockinSync.onStateChange(function() {
+            enforceBlockRules();
+        });
+    }
+
+    window.addEventListener('lockin-sync-change', function() {
+        enforceBlockRules();
+    });
+
+    // Observe DOM changes to maintain link rewrites and kill media if blocked
     var observer = new MutationObserver(function() {
-        if (isHomePage()) {
+        if (isStudyModeActive()) {
+            killMedia();
+            if (!document.getElementById('focuslens-block-overlay')) {
+                showFullStudyOverlay();
+            }
+        } else if (isHomePage()) {
             redirectToInbox();
         } else if (isReelsPage()) {
             killMedia();

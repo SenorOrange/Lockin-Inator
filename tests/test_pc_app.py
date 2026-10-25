@@ -19,6 +19,7 @@ from pc.break_pill import BreakPill
 from pc.floating_timer import FloatingTimerWidget
 from pc.dashboard_window import DashboardWindow
 from pc.sync_server import SyncManager
+from pc.settings_dialog import SettingsDialog
 from pc.tray_app import LockinInatorPC, STATE_IDLE, STATE_STUDY, STATE_BREAK, STATE_PAUSED
 
 
@@ -204,3 +205,23 @@ def test_sync_server():
         assert action_resp["success"] is True
     finally:
         mgr.stop()
+
+
+def test_settings_dialog_blocked_sites(qapp, tmp_path):
+    cfg_file = tmp_path / "test_sites_config.json"
+    mgr = ConfigManager(config_path=cfg_file)
+
+    dlg = SettingsDialog(mgr)
+    assert dlg.site_list.count() >= 5
+    assert "instagram.com" in [dlg.site_list.item(i).text() for i in range(dlg.site_list.count())]
+    assert "youtube.com" in [dlg.site_list.item(i).text() for i in range(dlg.site_list.count())]
+
+    # Add a new site
+    dlg.edit_site.setText("https://www.pinterest.com/feed")
+    dlg._add_site()
+    all_sites = [dlg.site_list.item(i).text() for i in range(dlg.site_list.count())]
+    assert "pinterest.com" in all_sites
+
+    # Save values
+    dlg._save_values()
+    assert "pinterest.com" in mgr.get("blocked_sites")

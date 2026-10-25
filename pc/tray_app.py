@@ -27,9 +27,12 @@ STATE_PAUSED = "PAUSED"
 
 
 class LockinInatorPC(QtCore.QObject):
+    remote_action_signal = QtCore.pyqtSignal(str, object)
+
     def __init__(self, app: QtWidgets.QApplication):
         super().__init__()
         self.app = app
+        self.remote_action_signal.connect(self._execute_remote_action)
         self.config_manager = ConfigManager()
         self.process_monitor = ProcessMonitor(self.config_manager.get("blocked_processes"))
 
@@ -332,6 +335,7 @@ class LockinInatorPC(QtCore.QObject):
         dlg = SettingsDialog(self.config_manager)
         if dlg.exec():
             self.process_monitor.update_blocked_processes(self.config_manager.get("blocked_processes"))
+            self.sync_manager.broadcast_update()
             self._rebuild_tray_menu()
 
     def _show_autopilot_guide(self):
@@ -358,19 +362,25 @@ class LockinInatorPC(QtCore.QObject):
             "remaining_seconds": self.remaining_seconds,
             "study_duration_minutes": self.config_manager.get("study_duration_minutes", 50),
             "break_duration_minutes": self.config_manager.get("break_duration_minutes", 10),
+            "blocked_sites": self.config_manager.get("blocked_sites", [
+                "instagram.com", "youtube.com", "tiktok.com", "twitter.com",
+                "x.com", "reddit.com", "twitch.tv", "facebook.com", "netflix.com"
+            ]),
         }
 
     def _handle_remote_action(self, action: str, duration: Optional[int]) -> bool:
-        if action in ("START_STUDY", "LOCK_IN"):
-            QtCore.QTimer.singleShot(0, lambda: self.start_study_session(duration))
-            return True
-        elif action == "START_BREAK":
-            QtCore.QTimer.singleShot(0, lambda: self.start_break_session(duration))
-            return True
-        elif action == "RESET":
-            QtCore.QTimer.singleShot(0, self.reset_session)
+        if action in ("START_STUDY", "LOCK_IN", "START_BREAK", "RESET"):
+            self.remote_action_signal.emit(action, duration)
             return True
         return False
+
+    def _execute_remote_action(self, action: str, duration: Optional[int]):
+        if action in ("START_STUDY", "LOCK_IN"):
+            self.start_study_session(duration)
+        elif action == "START_BREAK":
+            self.start_break_session(duration)
+        elif action == "RESET":
+            self.reset_session()
 
     def _quit(self):
         self.sync_manager.stop()

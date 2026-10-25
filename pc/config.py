@@ -15,6 +15,17 @@ DEFAULT_CONFIG = {
         "antigravity.exe",
         "code.exe"
     ],
+    "blocked_sites": [
+        "instagram.com",
+        "youtube.com",
+        "tiktok.com",
+        "twitter.com",
+        "x.com",
+        "reddit.com",
+        "twitch.tv",
+        "facebook.com",
+        "netflix.com"
+    ],
     "sound_enabled": True,
     "notifications_enabled": True,
     "auto_cycle": True,
