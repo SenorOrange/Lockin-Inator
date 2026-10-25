@@ -13,7 +13,8 @@ if str(ROOT_DIR) not in sys.path:
 
 from pc.config import ConfigManager, DEFAULT_CONFIG
 from pc.process_monitor import ProcessMonitor
-from pc.shield_overlay import ShieldOverlay
+from pc.shield_overlay import MultiScreenShield, SingleScreenShield
+from pc.friction_dialog import FrictionChallengeDialog, COMMITMENT_PHRASE
 from pc.break_pill import BreakPill
 from pc.dashboard_window import DashboardWindow
 from pc.tray_app import LockinInatorPC, STATE_IDLE, STATE_STUDY, STATE_BREAK, STATE_PAUSED
@@ -64,12 +65,31 @@ def test_process_monitor():
 
 
 def test_shield_overlay_timer(qapp):
-    overlay = ShieldOverlay()
-    overlay.update_timer(125)  # 2m 5s
-    assert overlay.timer_label.text() == "02:05"
+    overlay = MultiScreenShield()
+    overlay.show_shield(1234, "claude.exe", 125)
+    assert overlay.isVisible()
+    assert len(overlay.windows) >= 1
 
-    overlay.update_timer(0)
-    assert overlay.timer_label.text() == "00:00"
+    overlay.update_timer(125)
+    primary_w = [w for w in overlay.windows if w.is_interactive][0]
+    assert primary_w.timer_label.text() == "02:05"
+
+    overlay.hide_shield()
+    assert not overlay.isVisible()
+
+
+def test_friction_dialog(qapp):
+    dlg = FrictionChallengeDialog(delay_seconds=0)
+    # Target phrase must match exactly
+    assert dlg.target_phrase == COMMITMENT_PHRASE
+
+    dlg.input_edit.setText("wrong phrase")
+    dlg._check_validation()
+    assert not dlg.btn_unlock.isEnabled()
+
+    dlg.input_edit.setText(COMMITMENT_PHRASE)
+    dlg._check_validation()
+    assert dlg.btn_unlock.isEnabled()
 
 
 def test_break_pill_timer(qapp):

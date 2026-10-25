@@ -10,7 +10,7 @@ import winsound
 
 from .config import ConfigManager
 from .process_monitor import ProcessMonitor
-from .shield_overlay import ShieldOverlay
+from .shield_overlay import MultiScreenShield
 from .break_pill import BreakPill
 from .settings_dialog import SettingsDialog
 from .dashboard_window import DashboardWindow
@@ -37,7 +37,7 @@ class LockinInatorPC(QtCore.QObject):
         self.current_blocked_hwnd = None
 
         # UI Components
-        self.shield_overlay = ShieldOverlay()
+        self.shield_overlay = MultiScreenShield()
         self.shield_overlay.back_to_study_signal.connect(self._handle_back_to_study)
         self.shield_overlay.emergency_unlock_signal.connect(self._handle_emergency_unlock)
 
@@ -127,9 +127,9 @@ class LockinInatorPC(QtCore.QObject):
             action_study = self.menu.addAction(f"▶ Start Study Session ({study_min}m)")
             action_study.triggered.connect(lambda: self.start_study_session())
 
-        if self.state != STATE_BREAK:
+        if self.state not in (STATE_STUDY, STATE_BREAK):
             break_min = self.config_manager.get("break_duration_minutes", 10)
-            action_break = self.menu.addAction(f"☕ Take AI Review Break ({break_min}m)")
+            action_break = self.menu.addAction(f"☕ Start AI Review Window ({break_min}m)")
             action_break.triggered.connect(lambda: self.start_break_session())
 
         if self.state in (STATE_STUDY, STATE_BREAK):
@@ -177,7 +177,7 @@ class LockinInatorPC(QtCore.QObject):
         self.remaining_seconds = duration_minutes * 60
 
         self.monitor_timer.stop()
-        self.shield_overlay.hide()
+        self.shield_overlay.hide_shield()
         self.break_pill.show_pill(self.remaining_seconds)
 
         self.clock_timer.start()
@@ -193,7 +193,7 @@ class LockinInatorPC(QtCore.QObject):
             self.state = STATE_PAUSED
             self.clock_timer.stop()
             self.monitor_timer.stop()
-            self.shield_overlay.hide()
+            self.shield_overlay.hide_shield()
             self._notify("⏸ Paused", "Timer paused. Lockin-Inator focus shield is temporarily disarmed.")
             self.dashboard.update_state(self.state, self.remaining_seconds)
             self._rebuild_tray_menu()
@@ -214,7 +214,7 @@ class LockinInatorPC(QtCore.QObject):
         self.state = STATE_IDLE
         self.clock_timer.stop()
         self.monitor_timer.stop()
-        self.shield_overlay.hide()
+        self.shield_overlay.hide_shield()
         self.break_pill.hide()
         self.remaining_seconds = self.config_manager.get("study_duration_minutes", 50) * 60
         self.dashboard.update_state(self.state, self.remaining_seconds)
@@ -248,7 +248,7 @@ class LockinInatorPC(QtCore.QObject):
                     self.state = STATE_IDLE
                     self.clock_timer.stop()
                     self.monitor_timer.stop()
-                    self.shield_overlay.hide()
+                    self.shield_overlay.hide_shield()
                     self._play_sound(winsound.MB_OK)
                     self._notify("🎉 Session Complete", "Study session completed! Great job.")
                     self._rebuild_tray_menu()
@@ -273,7 +273,7 @@ class LockinInatorPC(QtCore.QObject):
             return
 
         # Do not block our own overlay or dialogs
-        if hwnd == int(self.shield_overlay.winId()):
+        if hwnd in self.shield_overlay.get_window_ids():
             return
 
         if self.process_monitor.is_blocked(pname):
@@ -282,13 +282,14 @@ class LockinInatorPC(QtCore.QObject):
                 self.shield_overlay.show_shield(hwnd, pname, self.remaining_seconds)
 
     def _handle_back_to_study(self):
+        self.shield_overlay.hide_shield()
         if self.current_blocked_hwnd:
             self.process_monitor.minimize_window(self.current_blocked_hwnd)
             self.current_blocked_hwnd = None
 
     def _handle_emergency_unlock(self):
-        self._notify("🔓 Temporary 2m Unlock", "Take 2 minutes to handle your prompt, then study mode will resume.")
-        self.start_break_session(duration_minutes=2)
+        self._notify("🔓 Early Review Window", "Early unlock challenge passed. You have a 10-minute review window.")
+        self.start_break_session(duration_minutes=self.config_manager.get("break_duration_minutes", 10))
 
     def _play_sound(self, sound_type):
         if self.config_manager.get("sound_enabled", True):
@@ -328,7 +329,7 @@ class LockinInatorPC(QtCore.QObject):
     def _quit(self):
         self.clock_timer.stop()
         self.monitor_timer.stop()
-        self.shield_overlay.close()
+        self.shield_overlay.hide_shield()
         self.break_pill.close()
         self.tray.hide()
         self.app.quit()

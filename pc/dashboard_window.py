@@ -5,6 +5,7 @@ adjust timer presets, view shielded apps, and access settings.
 """
 from pathlib import Path
 from PyQt6 import QtCore, QtGui, QtWidgets
+from .friction_dialog import FrictionChallengeDialog
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 LOGO_PATH = ASSETS_DIR / "lockin_logo.png"
@@ -190,6 +191,25 @@ class DashboardWindow(QtWidgets.QWidget):
         self.btn_main.clicked.connect(self._on_main_action_clicked)
         card_layout.addWidget(self.btn_main)
 
+        # High-friction early break link (only shown during study mode)
+        self.btn_force_break = QtWidgets.QPushButton("⚠️ Request Early Break (Challenge Required)...")
+        self.btn_force_break.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.btn_force_break.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #64748b;
+                border: none;
+                font-size: 12px;
+                padding: 4px;
+            }
+            QPushButton:hover {
+                color: #f87171;
+            }
+        """)
+        self.btn_force_break.setVisible(False)
+        self.btn_force_break.clicked.connect(self._on_force_break_clicked)
+        card_layout.addWidget(self.btn_force_break)
+
         # Sub-controls (Pause / Reset)
         self.sub_controls = QtWidgets.QHBoxLayout()
         self.sub_controls.setSpacing(10)
@@ -266,10 +286,13 @@ class DashboardWindow(QtWidgets.QWidget):
         btn_text = self.btn_main.text()
         if "START STUDY" in btn_text:
             self.start_study_signal.emit(self.selected_duration)
-        elif "AI REVIEW BREAK" in btn_text:
-            self.start_break_signal.emit(self.config_manager.get("break_duration_minutes", 10))
         elif "LOCK IN NOW" in btn_text:
             self.start_study_signal.emit(self.selected_duration)
+
+    def _on_force_break_clicked(self):
+        dlg = FrictionChallengeDialog(self, delay_seconds=15)
+        if dlg.exec():
+            self.start_break_signal.emit(self.config_manager.get("break_duration_minutes", 10))
 
     def _toggle_pause(self):
         if self.btn_pause.text() == "⏸ Pause":
@@ -284,8 +307,10 @@ class DashboardWindow(QtWidgets.QWidget):
         if state == "STUDY":
             self.badge_status.setText("🔒 STUDY MODE ACTIVE")
             self.badge_status.setStyleSheet("color: #38bdf8; background-color: #032b43; border: 1px solid #0369a1; border-radius: 12px; padding: 4px 14px; font-size: 12px; font-weight: 700;")
-            self.btn_main.setText("☕ AI REVIEW BREAK")
-            self.btn_main.setStyleSheet("background-color: #059669; color: #ffffff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 700;")
+            self.btn_main.setText("🔒 STUDY IN PROGRESS (LOCKED)")
+            self.btn_main.setEnabled(False)
+            self.btn_main.setStyleSheet("background-color: #1e293b; color: #64748b; border: 1px solid #334155; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700;")
+            self.btn_force_break.setVisible(True)
             self.btn_pause.setVisible(True)
             self.btn_pause.setText("⏸ Pause")
             self.btn_reset.setVisible(True)
@@ -293,8 +318,10 @@ class DashboardWindow(QtWidgets.QWidget):
         elif state == "BREAK":
             self.badge_status.setText("☕ AI REVIEW WINDOW OPEN")
             self.badge_status.setStyleSheet("color: #34d399; background-color: #064e3b; border: 1px solid #059669; border-radius: 12px; padding: 4px 14px; font-size: 12px; font-weight: 700;")
-            self.btn_main.setText("🔒 LOCK IN NOW")
+            self.btn_main.setText("🔒 LOCK IN NOW (END BREAK EARLY)")
+            self.btn_main.setEnabled(True)
             self.btn_main.setStyleSheet("background-color: #2563eb; color: #ffffff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 700;")
+            self.btn_force_break.setVisible(False)
             self.btn_pause.setVisible(True)
             self.btn_pause.setText("⏸ Pause")
             self.btn_reset.setVisible(True)
@@ -308,7 +335,9 @@ class DashboardWindow(QtWidgets.QWidget):
             self.badge_status.setText("💤 IDLE - READY TO STUDY")
             self.badge_status.setStyleSheet("color: #38bdf8; background-color: #032b43; border: 1px solid #0369a1; border-radius: 12px; padding: 4px 14px; font-size: 12px; font-weight: 700;")
             self.btn_main.setText("🔒 START STUDY SESSION")
+            self.btn_main.setEnabled(True)
             self.btn_main.setStyleSheet("background-color: #2563eb; color: #ffffff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 700;")
+            self.btn_force_break.setVisible(False)
             self.btn_pause.setVisible(False)
             self.btn_reset.setVisible(False)
             mins = self.selected_duration
