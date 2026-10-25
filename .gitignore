@@ -17,6 +17,8 @@ local.properties
 .idea/
 .kotlin/
 app/release/
+__pycache__/
+*.pyc
 _metadata/
 *.crx
 *.pem
