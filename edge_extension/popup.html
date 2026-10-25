@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lockin-Inator</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 16px;
+      width: 260px;
+      background-color: #0b1120;
+      color: #f8fafc;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .header img {
+      width: 28px;
+      height: 28px;
+    }
+    .header h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .status-card {
+      background-color: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 10px;
+      margin-bottom: 6px;
+    }
+    .badge.study {
+      background-color: #032b43;
+      color: #38bdf8;
+      border: 1px solid #0284c7;
+    }
+    .badge.break {
+      background-color: #064e3b;
+      color: #34d399;
+      border: 1px solid #059669;
+    }
+    .badge.idle {
+      background-color: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+    }
+    .timer {
+      font-size: 32px;
+      font-weight: 800;
+      font-family: Consolas, monospace;
+      color: #38bdf8;
+      margin: 4px 0;
+    }
+    .sync-info {
+      font-size: 11px;
+      color: #10b981;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .sync-info.disconnected {
+      color: #ef4444;
+    }
+    .btn {
+      width: 100%;
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background-color: #1d4ed8;
+    }
+    .footer {
+      font-size: 11px;
+      color: #64748b;
+      text-align: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="Lockin-Inator">
+    <h2>Lockin-Inator Sync</h2>
+  </div>
+
+  <div class="status-card">
+    <div id="status-badge" class="badge idle">IDLE</div>
+    <div id="timer-display" class="timer">--:--</div>
+    <div id="sync-status" class="sync-info">🟢 Connected to PC Hub</div>
+  </div>
+
+  <button id="btn-action" class="btn">🔒 Start Study Session</button>
+
+  <div class="footer">
+    Shielding Reels, Shorts & PC Distractions
+  </div>
+
+  <script src="scripts/popup.js"></script>
+</body>
+</html>

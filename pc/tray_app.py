@@ -15,6 +15,7 @@ from .break_pill import BreakPill
 from .floating_timer import FloatingTimerWidget
 from .settings_dialog import SettingsDialog
 from .dashboard_window import DashboardWindow
+from .sync_server import SyncManager
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 LOGO_PATH = ASSETS_DIR / "lockin_logo.png"
@@ -47,6 +48,12 @@ class LockinInatorPC(QtCore.QObject):
         self.floating_widget.lock_in_early_signal.connect(self.start_study_session)
         self.floating_widget.open_dashboard_signal.connect(self.show_dashboard)
         self.break_pill = self.floating_widget  # backwards compatibility
+
+        # Local Wi-Fi Sync Hub (Syncs PC, Edge Extension, and Android Phone)
+        self.sync_manager = SyncManager(port=8765)
+        self.sync_manager.set_status_provider(self._get_sync_status)
+        self.sync_manager.set_action_callback(self._handle_remote_action)
+        self.sync_manager.start()
 
         # Dashboard Window
         self.dashboard = DashboardWindow(self.config_manager)
@@ -169,6 +176,7 @@ class LockinInatorPC(QtCore.QObject):
         self._play_sound(winsound.MB_ICONASTERISK)
         self._notify("🔒 Locked In!", f"Study mode started for {duration_minutes} minutes. Claude & Antigravity will keep working in the background.")
         self.dashboard.update_state(self.state, self.remaining_seconds)
+        self.sync_manager.broadcast_update()
         self._rebuild_tray_menu()
 
     def start_break_session(self, duration_minutes=None):
@@ -186,6 +194,7 @@ class LockinInatorPC(QtCore.QObject):
         self._play_sound(winsound.MB_OK)
         self._notify("☕ Break & AI Review Time!", f"You have {duration_minutes} minutes to check Claude/Antigravity and queue your next game dev prompts.")
         self.dashboard.update_state(self.state, self.remaining_seconds)
+        self.sync_manager.broadcast_update()
         self._rebuild_tray_menu()
 
     def pause_session(self):
@@ -198,6 +207,7 @@ class LockinInatorPC(QtCore.QObject):
             self.floating_widget.hide()
             self._notify("⏸ Paused", "Timer paused. Lockin-Inator focus shield is temporarily disarmed.")
             self.dashboard.update_state(self.state, self.remaining_seconds)
+            self.sync_manager.broadcast_update()
             self._rebuild_tray_menu()
 
     def resume_session(self):
@@ -209,6 +219,7 @@ class LockinInatorPC(QtCore.QObject):
             self.floating_widget.show_widget(self.state, self.remaining_seconds)
             self._notify("▶ Resumed", "Timer resumed.")
             self.dashboard.update_state(self.state, self.remaining_seconds)
+            self.sync_manager.broadcast_update()
             self._rebuild_tray_menu()
 
     def reset_session(self):
@@ -219,6 +230,7 @@ class LockinInatorPC(QtCore.QObject):
         self.floating_widget.hide()
         self.remaining_seconds = self.config_manager.get("study_duration_minutes", 50) * 60
         self.dashboard.update_state(self.state, self.remaining_seconds)
+        self.sync_manager.broadcast_update()
         self._rebuild_tray_menu()
 
     def _on_clock_tick(self):
@@ -241,6 +253,9 @@ class LockinInatorPC(QtCore.QObject):
 
             if self.dashboard.isVisible():
                 self.dashboard.update_state(self.state, self.remaining_seconds)
+
+            # Broadcast update periodically to keep clients in sync
+            self.sync_manager.broadcast_update()
         else:
             # Timer reached zero!
             if self.state == STATE_STUDY:
@@ -337,7 +352,28 @@ class LockinInatorPC(QtCore.QObject):
         """)
         guide.exec()
 
+    def _get_sync_status(self) -> dict:
+        return {
+            "state": self.state,
+            "remaining_seconds": self.remaining_seconds,
+            "study_duration_minutes": self.config_manager.get("study_duration_minutes", 50),
+            "break_duration_minutes": self.config_manager.get("break_duration_minutes", 10),
+        }
+
+    def _handle_remote_action(self, action: str, duration: Optional[int]) -> bool:
+        if action in ("START_STUDY", "LOCK_IN"):
+            QtCore.QTimer.singleShot(0, lambda: self.start_study_session(duration))
+            return True
+        elif action == "START_BREAK":
+            QtCore.QTimer.singleShot(0, lambda: self.start_break_session(duration))
+            return True
+        elif action == "RESET":
+            QtCore.QTimer.singleShot(0, self.reset_session)
+            return True
+        return False
+
     def _quit(self):
+        self.sync_manager.stop()
         self.clock_timer.stop()
         self.monitor_timer.stop()
         self.shield_overlay.hide_shield()

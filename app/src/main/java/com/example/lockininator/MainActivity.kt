@@ -194,6 +194,51 @@ class MainActivity : ComponentActivity() {
         var blockFacebook by remember { mutableStateOf(prefs.getBoolean("block_facebook", true)) }
         var blockAlways by remember { mutableStateOf(prefs.getBoolean("block_always", true)) }
 
+        // Local Wi-Fi Sync across PC, Browser, and Phone
+        val syncManager = remember { SyncManager(context) }
+        var syncPcEnabled by remember { mutableStateOf(prefs.getBoolean("sync_pc_enabled", true)) }
+        var isSyncConnected by remember { mutableStateOf(false) }
+
+        DisposableEffect(syncPcEnabled) {
+            if (syncPcEnabled) {
+                syncManager.onSyncStatusChanged = { connected, state, remainingSec ->
+                    isSyncConnected = connected
+                    if (state == "STUDY") {
+                        if (!timerRunning) {
+                            timerRunning = true
+                            inExtraTime = false
+                            timeRemaining = remainingSec * 1000L
+                            userSetTime = timeRemaining
+                            countDownTimer?.cancel()
+                            countDownTimer = object : CountDownTimer(timeRemaining, 1000) {
+                                override fun onTick(millisUntilFinished: Long) {
+                                    timeRemaining = millisUntilFinished
+                                }
+                                override fun onFinish() {
+                                    timerRunning = false
+                                    inExtraTime = true
+                                }
+                            }.start()
+                        } else {
+                            timeRemaining = remainingSec * 1000L
+                        }
+                    } else if (state == "BREAK" || state == "IDLE") {
+                        if (timerRunning) {
+                            countDownTimer?.cancel()
+                            timerRunning = false
+                        }
+                    }
+                }
+                syncManager.startSync()
+            } else {
+                syncManager.stopSync()
+                isSyncConnected = false
+            }
+            onDispose {
+                syncManager.stopSync()
+            }
+        }
+
         val lifecycleOwner = LocalLifecycleOwner.current
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
@@ -385,6 +430,9 @@ class MainActivity : ComponentActivity() {
 
                         Button(
                             onClick = {
+                                if (syncPcEnabled) {
+                                    syncManager.sendActionToPc("START_STUDY", (timeSeconds / 60).roundToInt())
+                                }
                                 prefs.edit().putBoolean("study_mode_active", true).apply()
                                 try {
                                     activity.startLockTask()
@@ -480,6 +528,9 @@ class MainActivity : ComponentActivity() {
 
                         Button(
                             onClick = {
+                                if (syncPcEnabled) {
+                                    syncManager.sendActionToPc("RESET")
+                                }
                                 prefs.edit().putBoolean("study_mode_active", false).apply()
                                 try {
                                     val notificationManager = activity.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -740,6 +791,32 @@ class MainActivity : ComponentActivity() {
                                         blockAlways = true
                                         prefs.edit().putBoolean("block_always", true).apply()
                                     }
+                                },
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF6A0DAD))
+                            )
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = Color(0xFF262636))
+
+                        // FEATURE: PC & Browser Wi-Fi Sync
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("PC & Browser Wi-Fi Sync", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    if (isSyncConnected) "Connected to PC (${syncManager.currentServerIp})" else "Searching for PC on local Wi-Fi...",
+                                    color = if (isSyncConnected) Color(0xFF10B981) else Color.Gray,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = syncPcEnabled,
+                                onCheckedChange = {
+                                    syncPcEnabled = it
+                                    prefs.edit().putBoolean("sync_pc_enabled", it).apply()
                                 },
                                 colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF6A0DAD))
                             )

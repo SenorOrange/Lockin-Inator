@@ -18,6 +18,7 @@ from pc.friction_dialog import FrictionChallengeDialog, COMMITMENT_PHRASE
 from pc.break_pill import BreakPill
 from pc.floating_timer import FloatingTimerWidget
 from pc.dashboard_window import DashboardWindow
+from pc.sync_server import SyncManager
 from pc.tray_app import LockinInatorPC, STATE_IDLE, STATE_STUDY, STATE_BREAK, STATE_PAUSED
 
 
@@ -171,3 +172,35 @@ def test_state_transitions(qapp, tmp_path):
     controller.break_pill.hide()
     controller.shield_overlay.hide()
     controller.tray.hide()
+    controller.sync_manager.stop()
+
+
+def test_sync_server():
+    import urllib.request
+    import json
+    import time
+
+    mgr = SyncManager(port=8768)
+    mgr.set_status_provider(lambda: {"state": "STUDY", "remaining_seconds": 1200})
+    mgr.set_action_callback(lambda act, dur: True)
+    mgr.start()
+    time.sleep(0.3)
+
+    try:
+        # Status endpoint
+        req = urllib.request.urlopen("http://127.0.0.1:8768/api/status")
+        data = json.loads(req.read().decode())
+        assert data["state"] == "STUDY"
+        assert data["remaining_seconds"] == 1200
+
+        # Action endpoint
+        post_data = json.dumps({"action": "START_STUDY", "duration_minutes": 50}).encode()
+        post_req = urllib.request.Request(
+            "http://127.0.0.1:8768/api/action",
+            data=post_data,
+            headers={"Content-Type": "application/json"}
+        )
+        action_resp = json.loads(urllib.request.urlopen(post_req).read().decode())
+        assert action_resp["success"] is True
+    finally:
+        mgr.stop()

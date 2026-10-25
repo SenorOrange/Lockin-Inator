@@ -251,6 +251,11 @@ class DashboardWindow(QtWidgets.QWidget):
         sub_info.setStyleSheet("font-size: 12px; color: #64748b; line-height: 1.3;")
         apps_layout.addWidget(sub_info)
 
+        # Wi-Fi Sync Status Info
+        self.sync_badge = QtWidgets.QLabel("🌐 Wi-Fi Sync: Broadcasting for Android & Edge (:8765)")
+        self.sync_badge.setStyleSheet("font-size: 11px; color: #10b981; font-weight: 600; padding-top: 4px;")
+        apps_layout.addWidget(self.sync_badge)
+
         layout.addWidget(apps_card)
 
         # Bottom Bar
