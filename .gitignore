@@ -17,3 +17,6 @@ local.properties
 .idea/
 .kotlin/
 app/release/
+_metadata/
+*.crx
+*.pem
