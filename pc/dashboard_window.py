@@ -210,7 +210,7 @@ class DashboardWindow(QtWidgets.QWidget):
         self.btn_force_break.clicked.connect(self._on_force_break_clicked)
         card_layout.addWidget(self.btn_force_break)
 
-        # Sub-controls (Pause / Reset)
+        # Sub-controls (Hidden during active lock-in to prevent bypass loopholes)
         self.sub_controls = QtWidgets.QHBoxLayout()
         self.sub_controls.setSpacing(10)
 
@@ -311,9 +311,8 @@ class DashboardWindow(QtWidgets.QWidget):
             self.btn_main.setEnabled(False)
             self.btn_main.setStyleSheet("background-color: #1e293b; color: #64748b; border: 1px solid #334155; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700;")
             self.btn_force_break.setVisible(True)
-            self.btn_pause.setVisible(True)
-            self.btn_pause.setText("⏸ Pause")
-            self.btn_reset.setVisible(True)
+            self.btn_pause.setVisible(False)
+            self.btn_reset.setVisible(False)
 
         elif state == "BREAK":
             self.badge_status.setText("☕ AI REVIEW WINDOW OPEN")
@@ -322,9 +321,8 @@ class DashboardWindow(QtWidgets.QWidget):
             self.btn_main.setEnabled(True)
             self.btn_main.setStyleSheet("background-color: #2563eb; color: #ffffff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 700;")
             self.btn_force_break.setVisible(False)
-            self.btn_pause.setVisible(True)
-            self.btn_pause.setText("⏸ Pause")
-            self.btn_reset.setVisible(True)
+            self.btn_pause.setVisible(False)
+            self.btn_reset.setVisible(False)
 
         elif state == "PAUSED":
             self.badge_status.setText("⏸ PAUSED")

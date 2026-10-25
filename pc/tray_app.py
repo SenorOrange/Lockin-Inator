@@ -132,10 +132,7 @@ class LockinInatorPC(QtCore.QObject):
             action_break = self.menu.addAction(f"☕ Start AI Review Window ({break_min}m)")
             action_break.triggered.connect(lambda: self.start_break_session())
 
-        if self.state in (STATE_STUDY, STATE_BREAK):
-            action_pause = self.menu.addAction("⏸ Pause Timer")
-            action_pause.triggered.connect(self.pause_session)
-        elif self.state == STATE_PAUSED:
+        if self.state == STATE_PAUSED:
             action_resume = self.menu.addAction("▶ Resume Timer")
             action_resume.triggered.connect(self.resume_session)
 
