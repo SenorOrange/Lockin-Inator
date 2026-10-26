@@ -1,6 +1,8 @@
 package com.example.lockininator
 
+import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
@@ -13,9 +15,22 @@ import java.io.OutputStreamWriter
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
 import java.net.URL
+import java.util.concurrent.CopyOnWriteArrayList
 
 class SyncManager(private val context: Context) {
+
+    companion object {
+        @Volatile
+        private var instance: SyncManager? = null
+
+        fun getInstance(context: Context): SyncManager {
+            return instance ?: synchronized(this) {
+                instance ?: SyncManager(context.applicationContext).also { instance = it }
+            }
+        }
+    }
 
     private val prefs: SharedPreferences = context.getSharedPreferences("lockin_prefs", Context.MODE_PRIVATE)
     private var syncJob: Job? = null
@@ -26,6 +41,19 @@ class SyncManager(private val context: Context) {
         private set
     var currentServerIp: String = prefs.getString("sync_pc_ip", "192.168.2.17") ?: "192.168.2.17"
         private set
+
+    private val listeners = CopyOnWriteArrayList<(Boolean, String, Long) -> Unit>()
+
+    fun addSyncListener(listener: (Boolean, String, Long) -> Unit) {
+        if (!listeners.contains(listener)) {
+            listeners.add(listener)
+        }
+    }
+
+    fun removeSyncListener(listener: (Boolean, String, Long) -> Unit) {
+        listeners.remove(listener)
+    }
+
     var onSyncStatusChanged: ((Boolean, String, Long) -> Unit)? = null
 
     fun startSync() {
@@ -56,7 +84,10 @@ class SyncManager(private val context: Context) {
     private suspend fun listenForUdpBeacon() {
         var socket: DatagramSocket? = null
         try {
-            socket = DatagramSocket(8766)
+            socket = DatagramSocket(null).apply {
+                reuseAddress = true
+                bind(InetSocketAddress(8766))
+            }
             socket.broadcast = true
             val buffer = ByteArray(1024)
 
@@ -107,11 +138,17 @@ class SyncManager(private val context: Context) {
                     handleStateFromPc(state, remainingSeconds)
                 }
             } else {
-                isConnected = false
+                if (isConnected) {
+                    isConnected = false
+                    notifyListeners(false, "IDLE", 0L)
+                }
             }
             conn.disconnect()
         } catch (e: Exception) {
-            isConnected = false
+            if (isConnected) {
+                isConnected = false
+                notifyListeners(false, "IDLE", 0L)
+            }
         }
     }
 
@@ -122,18 +159,68 @@ class SyncManager(private val context: Context) {
             if (!currentStudyActive) {
                 prefs.edit().putBoolean("study_mode_active", true).apply()
                 Log.d("LockinSync", "Enabling study mode synced from PC ($remainingSeconds s left)")
+
+                // Silence notifications with DND
+                try {
+                    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    if (notificationManager.isNotificationPolicyAccessGranted) {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+                    }
+                } catch (e: Exception) {
+                    Log.w("LockinSync", "DND silence error: ${e.message}")
+                }
+
+                // Bring MainActivity to the front so screen pinning can lock
+                try {
+                    val intent = Intent(context, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        putExtra("EXTRA_START_LOCK_TASK", true)
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("LockinSync", "Failed to bring MainActivity to front: ${e.message}")
+                }
             }
-            onSyncStatusChanged?.invoke(true, state, remainingSeconds)
+            notifyListeners(true, state, remainingSeconds)
         } else if (state == "BREAK") {
             if (currentStudyActive) {
                 prefs.edit().putBoolean("study_mode_active", false).apply()
+                try {
+                    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    if (notificationManager.isNotificationPolicyAccessGranted) {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                    }
+                } catch (e: Exception) {
+                    Log.w("LockinSync", "DND restore error: ${e.message}")
+                }
             }
-            onSyncStatusChanged?.invoke(true, state, remainingSeconds)
+            notifyListeners(true, state, remainingSeconds)
         } else {
             if (currentStudyActive) {
                 prefs.edit().putBoolean("study_mode_active", false).apply()
+                try {
+                    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    if (notificationManager.isNotificationPolicyAccessGranted) {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                    }
+                } catch (e: Exception) {
+                    Log.w("LockinSync", "DND restore error: ${e.message}")
+                }
             }
-            onSyncStatusChanged?.invoke(true, "IDLE", 0L)
+            notifyListeners(true, "IDLE", 0L)
+        }
+    }
+
+    private fun notifyListeners(connected: Boolean, state: String, remainingSeconds: Long) {
+        Handler(Looper.getMainLooper()).post {
+            onSyncStatusChanged?.invoke(connected, state, remainingSeconds)
+            for (listener in listeners) {
+                try {
+                    listener(connected, state, remainingSeconds)
+                } catch (e: Exception) {
+                    Log.e("LockinSync", "Listener error: ${e.message}")
+                }
+            }
         }
     }
 

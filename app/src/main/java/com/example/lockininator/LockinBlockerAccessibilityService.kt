@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Path
 import android.graphics.Rect
@@ -29,6 +30,24 @@ class LockinBlockerAccessibilityService : AccessibilityService() {
     private var lastActionTime = 0L
     private val actionCooldownMs = 350L
 
+    // Study Mode Full Lockout State
+    private var lastStudyLockoutTime = 0L
+    private val blockedStudyPackages = setOf(
+        "com.instagram.android",
+        "com.google.android.youtube",
+        "com.google.android.youtube.tv",
+        "com.zhiliaoapp.musically",
+        "com.ss.android.ugc.trill",
+        "com.facebook.katana",
+        "com.facebook.lite",
+        "com.reddit.frontpage",
+        "com.twitter.android",
+        "com.snapchat.android",
+        "tv.twitch.android.app",
+        "com.netflix.mediaclient",
+        "com.pinterest"
+    )
+
     // State tracking for friend's reels and chat navigation
     private var lastInChatThreadTime = 0L
     private var lastReelsTabClickTime = 0L
@@ -48,6 +67,13 @@ class LockinBlockerAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.d(tag, "LockinBlockerAccessibilityService connected and ready!")
+        try {
+            if (prefs.getBoolean("sync_pc_enabled", true)) {
+                SyncManager.getInstance(applicationContext).startSync()
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to start SyncManager from AccessibilityService", e)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -61,6 +87,14 @@ class LockinBlockerAccessibilityService : AccessibilityService() {
 
             if (!blockAlways && !studyModeActive) return
 
+            // 1. FULL STUDY MODE LOCKOUT
+            // If Study Mode is active, distracting apps (Instagram, YouTube, TikTok, Facebook, Reddit, etc.)
+            // are completely blocked and the user is routed right back to Lockin-Inator.
+            if (studyModeActive && blockedStudyPackages.contains(pkg)) {
+                handleStudyModeLockout(pkg)
+                return
+            }
+
             if (pkg == "com.instagram.android") {
                 handleInstagram(event)
             } else if (pkg == "com.google.android.youtube" && prefs.getBoolean("block_shorts", true)) {
@@ -71,6 +105,45 @@ class LockinBlockerAccessibilityService : AccessibilityService() {
         } catch (t: Throwable) {
             Log.e(tag, "Unexpected error in onAccessibilityEvent", t)
         }
+    }
+
+    private fun handleStudyModeLockout(pkg: String) {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastStudyLockoutTime < 800L) {
+            return
+        }
+        lastStudyLockoutTime = now
+
+        Log.w(tag, "Study Mode Active: Intercepted distracting app '$pkg'. Returning to Lockin-Inator.")
+
+        // Kick out of distracting app immediately
+        performGlobalAction(GLOBAL_ACTION_HOME)
+
+        // Relaunch Lockin-Inator to foreground and pin
+        mainHandler.postDelayed({
+            try {
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    putExtra("EXTRA_START_LOCK_TASK", true)
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to launch MainActivity during study lockout", e)
+            }
+        }, 120L)
+
+        if (now - lastToastTime > toastCooldownMs) {
+            lastToastTime = now
+            mainHandler.post {
+                Toast.makeText(
+                    applicationContext,
+                    "🔒 Study Mode Active: Locked until timer ends.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
+        recordIntercept("study_mode")
     }
 
     private fun recordIntercept(type: String) {

@@ -122,6 +122,30 @@ class MainActivity : ComponentActivity() {
         super.onBackPressed()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (prefs.getBoolean("study_mode_active", false)) {
+            try {
+                startLockTask()
+            } catch (e: Exception) {
+                android.util.Log.w("LockinApp", "startLockTask failed in onResume: ${e.message}")
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("EXTRA_START_LOCK_TASK", false) ||
+            prefs.getBoolean("study_mode_active", false)) {
+            try {
+                startLockTask()
+            } catch (e: Exception) {
+                android.util.Log.w("LockinApp", "startLockTask failed in onNewIntent: ${e.message}")
+            }
+        }
+    }
+
     @Composable
     fun SplashScreen() {
         Box(
@@ -195,47 +219,106 @@ class MainActivity : ComponentActivity() {
         var blockAlways by remember { mutableStateOf(prefs.getBoolean("block_always", true)) }
 
         // Local Wi-Fi Sync across PC, Browser, and Phone
-        val syncManager = remember { SyncManager(context) }
+        val syncManager = remember { SyncManager.getInstance(context) }
         var syncPcEnabled by remember { mutableStateOf(prefs.getBoolean("sync_pc_enabled", true)) }
         var isSyncConnected by remember { mutableStateOf(false) }
 
         DisposableEffect(syncPcEnabled) {
-            if (syncPcEnabled) {
-                syncManager.onSyncStatusChanged = { connected, state, remainingSec ->
-                    isSyncConnected = connected
-                    if (state == "STUDY") {
-                        if (!timerRunning) {
-                            timerRunning = true
-                            inExtraTime = false
-                            timeRemaining = remainingSec * 1000L
-                            userSetTime = timeRemaining
-                            countDownTimer?.cancel()
-                            countDownTimer = object : CountDownTimer(timeRemaining, 1000) {
-                                override fun onTick(millisUntilFinished: Long) {
-                                    timeRemaining = millisUntilFinished
-                                }
-                                override fun onFinish() {
-                                    timerRunning = false
-                                    inExtraTime = true
-                                }
-                            }.start()
-                        } else {
-                            timeRemaining = remainingSec * 1000L
+            val listener: (Boolean, String, Long) -> Unit = { connected, state, remainingSec ->
+                isSyncConnected = connected
+                if (state == "STUDY") {
+                    if (!timerRunning) {
+                        prefs.edit().putBoolean("study_mode_active", true).apply()
+                        try {
+                            activity.startLockTask()
+                        } catch (e: Exception) {
+                            android.util.Log.w("LockinApp", "startLockTask failed in sync: ${e.message}")
                         }
-                    } else if (state == "BREAK" || state == "IDLE") {
-                        if (timerRunning) {
-                            countDownTimer?.cancel()
-                            timerRunning = false
+                        try {
+                            val notificationManager = activity.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                            if (notificationManager.isNotificationPolicyAccessGranted) {
+                                notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+                            }
+                        } catch (e: SecurityException) {
+                            android.util.Log.e("LockinApp", "DND access denied in sync", e)
+                        }
+
+                        timerRunning = true
+                        inExtraTime = false
+                        timeRemaining = remainingSec * 1000L
+                        userSetTime = timeRemaining
+                        countDownTimer?.cancel()
+                        countDownTimer = object : CountDownTimer(timeRemaining, 1000) {
+                            override fun onTick(millisUntilFinished: Long) {
+                                timeRemaining = millisUntilFinished
+                            }
+                            override fun onFinish() {
+                                try {
+                                    activity.stopLockTask()
+                                } catch (e: Exception) {
+                                    android.util.Log.w("LockinApp", "stopLockTask failed onFinish: ${e.message}")
+                                }
+                                try {
+                                    val notificationManager = activity.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                                    if (notificationManager.isNotificationPolicyAccessGranted) {
+                                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                                    }
+                                } catch (e: SecurityException) {
+                                    android.util.Log.e("LockinApp", "DND access denied onFinish", e)
+                                }
+                                timerRunning = false
+                                inExtraTime = true
+                                extraTime = 0L
+                                extraTimer = object : CountDownTimer(60_000_000, 1000) {
+                                    override fun onTick(millisUntilFinished: Long) {
+                                        extraTime += 1000
+                                    }
+                                    override fun onFinish() {}
+                                }.start()
+                            }
+                        }.start()
+                    } else {
+                        // Drift correction: if phone timer is more than 3s off PC timer, sync it
+                        val diff = abs(timeRemaining - (remainingSec * 1000L))
+                        if (diff > 3000) {
+                            timeRemaining = remainingSec * 1000L
                         }
                     }
+                } else if (state == "BREAK" || state == "IDLE") {
+                    prefs.edit().putBoolean("study_mode_active", false).apply()
+                    try {
+                        activity.stopLockTask()
+                    } catch (e: Exception) {
+                        android.util.Log.w("LockinApp", "stopLockTask failed on idle/break: ${e.message}")
+                    }
+                    try {
+                        val notificationManager = activity.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                        if (notificationManager.isNotificationPolicyAccessGranted) {
+                            notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                        }
+                    } catch (e: SecurityException) {
+                        android.util.Log.e("LockinApp", "DND access denied on idle/break", e)
+                    }
+                    if (timerRunning) {
+                        countDownTimer?.cancel()
+                        timerRunning = false
+                    }
+                    if (inExtraTime) {
+                        extraTimer?.cancel()
+                        inExtraTime = false
+                    }
                 }
+            }
+
+            if (syncPcEnabled) {
+                syncManager.addSyncListener(listener)
                 syncManager.startSync()
             } else {
-                syncManager.stopSync()
+                syncManager.removeSyncListener(listener)
                 isSyncConnected = false
             }
             onDispose {
-                syncManager.stopSync()
+                syncManager.removeSyncListener(listener)
             }
         }
 
@@ -461,10 +544,19 @@ class MainActivity : ComponentActivity() {
                                         timeRemaining = millisUntilFinished
                                     }
                                     override fun onFinish() {
+                                        prefs.edit().putBoolean("study_mode_active", false).apply()
                                         try {
                                             activity.stopLockTask()
                                         } catch (e: Exception) {
                                             android.util.Log.w("LockinApp", "stopLockTask failed: ${e.message}")
+                                        }
+                                        try {
+                                            val notificationManager = activity.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                                            if (notificationManager.isNotificationPolicyAccessGranted) {
+                                                notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                                            }
+                                        } catch (e: SecurityException) {
+                                            android.util.Log.e("LockinApp", "DND access denied onFinish", e)
                                         }
                                         timerRunning = false
                                         inExtraTime = true
