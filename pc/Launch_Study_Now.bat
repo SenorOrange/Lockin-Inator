@@ -1,2 +1,7 @@
 @echo off
-start "" "C:\Users\joshm\anaconda3\pythonw.exe" "%~dp0main.py" --start
+where pythonw >nul 2>nul
+if %errorlevel% equ 0 (
+    start "" pythonw "%~dp0main.py" --start
+) else (
+    start "" pyw "%~dp0main.py" --start
+)

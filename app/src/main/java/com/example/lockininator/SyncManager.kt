@@ -39,7 +39,7 @@ class SyncManager(private val context: Context) {
 
     var isConnected: Boolean = false
         private set
-    var currentServerIp: String = prefs.getString("sync_pc_ip", "192.168.2.17") ?: "192.168.2.17"
+    var currentServerIp: String = prefs.getString("sync_pc_ip", "192.168.1.100") ?: "192.168.1.100"
         private set
 
     private val listeners = CopyOnWriteArrayList<(Boolean, String, Long) -> Unit>()
