@@ -121,43 +121,34 @@ def test_floating_timer_widget(qapp):
     assert widget.width() == 240
     assert widget.height() == 46
 
-    # Test Physics Mode Scaling (1.5x)
+    # Test Physics Mode Scaling (1.5x when active, 1.0x when held still)
     widget.set_physics_enabled(True)
     assert widget.physics_enabled is True
     assert widget.width() == 360
     assert widget.height() == 69
 
     widget.show_widget("STUDY", 25 * 60)
+    widget.vx = 5.0
+    widget.vy = 4.0
+    widget._set_scale(1.5)
     assert widget.width() == 255
     assert widget.height() == 69
 
-    # Test Physics Tick movement
-    initial_x = widget._pos_x
-    widget.vx = 4.0
-    widget.vy = 3.0
+    # Test Friction Deceleration on physics tick
+    initial_speed = (widget.vx**2 + widget.vy**2)**0.5
     widget._on_physics_tick()
-    assert widget._pos_x != initial_x
+    new_speed = (widget.vx**2 + widget.vy**2)**0.5
+    assert new_speed < initial_speed  # Speed decreases due to friction!
 
-    # Test "Held Still stops all movement"
-    import time
-    t0 = time.time()
-    p0 = QtCore.QPoint(100, 100)
-    # Simulate holding still for 150ms with virtually zero mouse movement
-    widget._drag_samples = [
-        (t0, p0),
-        (t0 + 0.15, QtCore.QPoint(101, 100))
-    ]
-    # Simulate release
-    t_start, p_start = widget._drag_samples[0]
-    t_end, p_end = widget._drag_samples[-1]
-    dt = t_end - t_start
-    dist = ((p_end.x() - p_start.x())**2 + (p_end.y() - p_start.y())**2)**0.5
-    speed = dist / dt
-    assert speed < 100.0
-    widget.vx = 0.0
-    widget.vy = 0.0
+    # Test "Held still automatically reverts to normal 1.0x size and stops movement"
+    widget.vx = 0.05  # below movement threshold
+    widget.vy = 0.05
+    widget._on_physics_tick()
     assert widget.vx == 0.0
     assert widget.vy == 0.0
+    assert widget.scale_factor == 1.0
+    assert widget.width() == 170
+    assert widget.height() == 46
 
     widget.hide()
 

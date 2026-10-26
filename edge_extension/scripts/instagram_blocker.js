@@ -270,6 +270,15 @@
         }
     }, true);
 
+    // Early check from local storage in case sync client is still initializing
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['lockin_sync_state'], function(res) {
+            if (res && res.lockin_sync_state && res.lockin_sync_state.state === 'STUDY' && res.lockin_sync_state.remaining_seconds > 0) {
+                showFullStudyOverlay();
+            }
+        });
+    }
+
     // Initial check right at document_start
     enforceBlockRules();
 

@@ -252,13 +252,13 @@
       return { ...syncState };
     },
     isStudyMode: function () {
-      return Boolean(syncState.connected && syncState.state === "STUDY");
+      return Boolean(syncState.state === "STUDY" && syncState.remaining_seconds > 0);
     },
     isBreakMode: function () {
-      return Boolean(syncState.connected && syncState.state === "BREAK");
+      return Boolean(syncState.state === "BREAK" && syncState.remaining_seconds > 0);
     },
     isIdleMode: function () {
-      return !syncState.connected || syncState.state === "IDLE";
+      return syncState.state === "IDLE" || !syncState.state;
     },
     getRemainingSeconds: function () {
       return syncState.remaining_seconds;

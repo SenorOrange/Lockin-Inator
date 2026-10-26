@@ -109,28 +109,32 @@ class LockinBlockerAccessibilityService : AccessibilityService() {
 
     private fun handleStudyModeLockout(pkg: String) {
         val now = SystemClock.uptimeMillis()
-        if (now - lastStudyLockoutTime < 800L) {
+        if (now - lastStudyLockoutTime < 300L) {
             return
         }
         lastStudyLockoutTime = now
 
         Log.w(tag, "Study Mode Active: Intercepted distracting app '$pkg'. Returning to Lockin-Inator.")
 
-        // Kick out of distracting app immediately
-        performGlobalAction(GLOBAL_ACTION_HOME)
+        // 1. Immediately press BACK to dismiss the opening app from foreground
+        performGlobalAction(GLOBAL_ACTION_BACK)
 
-        // Relaunch Lockin-Inator to foreground and pin
-        mainHandler.postDelayed({
-            try {
-                val intent = Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                    putExtra("EXTRA_START_LOCK_TASK", true)
-                }
-                startActivity(intent)
-            } catch (e: Exception) {
-                Log.e(tag, "Failed to launch MainActivity during study lockout", e)
+        // 2. Launch Lockin-Inator synchronously within the accessibility event window
+        try {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
+                putExtra("EXTRA_START_LOCK_TASK", true)
             }
-        }, 120L)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to launch MainActivity during study lockout", e)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
 
         if (now - lastToastTime > toastCooldownMs) {
             lastToastTime = now
@@ -309,7 +313,7 @@ class LockinBlockerAccessibilityService : AccessibilityService() {
             initialReelAuthor = ""
             accumulatedScrollY = 0
             Log.d(tag, "Reels tab tap intercepted -> redirecting to Messages")
-            val redirected = redirectToMessages(rootNode, allowBackFallback = false)
+            val redirected = redirectToMessages(rootNode, allowBackFallback = true)
             if (!redirected) scheduleRedirectRetry()
             recordIntercept("reels")
             return
@@ -334,7 +338,7 @@ class LockinBlockerAccessibilityService : AccessibilityService() {
             initialReelAuthor = ""
             accumulatedScrollY = 0
             Log.d(tag, "Non-messages screen/tab detected -> redirecting to Messages")
-            val redirected = redirectToMessages(rootNode, allowBackFallback = false)
+            val redirected = redirectToMessages(rootNode, allowBackFallback = true)
             if (!redirected) {
                 scheduleRedirectRetry()
             }
@@ -348,7 +352,7 @@ class LockinBlockerAccessibilityService : AccessibilityService() {
             watchingFriendReel = false
             initialReelAuthor = ""
             accumulatedScrollY = 0
-            val redirected = redirectToMessages(rootNode, allowBackFallback = false)
+            val redirected = redirectToMessages(rootNode, allowBackFallback = true)
             if (!redirected) scheduleRedirectRetry()
             recordIntercept("reels")
             return

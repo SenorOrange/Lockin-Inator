@@ -2,8 +2,8 @@
 Floating Timer Widget for Lockin-Inator PC.
 A sleek, draggable, always-on-top pill widget displayed on-screen during
 Study and Break sessions, keeping the live timer visible without being distracting.
-Includes optional Physics Mode with screen bouncing, momentum sliding, jiggle effects,
-and hold-to-stop physics at 1.5x scale.
+Includes optional Physics Mode with screen bouncing, momentum sliding, friction deceleration,
+jiggle impact effects, and hold-to-stop physics that automatically reverts to normal 1.0x size.
 """
 import math
 import random
@@ -31,8 +31,9 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self._settings = QtCore.QSettings("LockinInator", "FloatingTimer")
         self.physics_enabled = self._settings.value("physics_enabled", False, type=bool)
 
-        self.vx = 3.2
-        self.vy = 2.4
+        self.scale_factor = 1.0  # Starts at 1.0; blooms to 1.5x during active physics movement
+        self.vx = 0.0
+        self.vy = 0.0
         self._pos_x = 0.0
         self._pos_y = 0.0
         self._is_held = False
@@ -40,7 +41,7 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self._jiggle_frames = 0
         self._jiggle_offset_y = 0.0
 
-        # 60 FPS Physics simulation timer
+        # Physics simulation timer (60 FPS)
         self._physics_timer = QtCore.QTimer(self)
         self._physics_timer.setInterval(16)
         self._physics_timer.timeout.connect(self._on_physics_tick)
@@ -89,8 +90,25 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.OpenHandCursor))
         self._update_styles()
 
+    def _set_scale(self, scale: float):
+        """Smoothly scale between normal (1.0x) and physics (1.5x) while maintaining center point."""
+        if abs(self.scale_factor - scale) < 0.01:
+            return
+
+        old_center = self.geometry().center()
+        self.scale_factor = scale
+        self._apply_dimensions()
+        self._apply_frame_layout_margins()
+        self._update_styles()
+
+        new_x = old_center.x() - self.width() // 2
+        new_y = old_center.y() - self.height() // 2
+        self._pos_x = float(new_x)
+        self._pos_y = float(new_y)
+        self.move(new_x, new_y)
+
     def _apply_dimensions(self):
-        sf = 1.5 if self.physics_enabled else 1.0
+        sf = self.scale_factor
         h = int(46 * sf)
         self.setFixedHeight(h)
         if self.state == "BREAK":
@@ -100,7 +118,7 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self.setFixedWidth(w)
 
     def _apply_frame_layout_margins(self):
-        sf = 1.5 if self.physics_enabled else 1.0
+        sf = self.scale_factor
         h_pad = int(12 * sf)
         v_pad = int(4 * sf)
         spacing = int(8 * sf)
@@ -108,7 +126,7 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self.frame_layout.setSpacing(spacing)
 
     def _update_styles(self):
-        sf = 1.5 if self.physics_enabled else 1.0
+        sf = self.scale_factor
         border_radius = int(19 * sf)
         timer_font_size = int(16 * sf)
         icon_font_size = int(15 * sf)
@@ -164,21 +182,22 @@ class FloatingTimerWidget(QtWidgets.QWidget):
     def set_physics_enabled(self, enabled: bool):
         self.physics_enabled = bool(enabled)
         self._settings.setValue("physics_enabled", self.physics_enabled)
-        self._apply_dimensions()
-        self._apply_frame_layout_margins()
-        self._update_styles()
 
         if self.physics_enabled:
-            if abs(self.vx) < 1.0 and abs(self.vy) < 1.0:
-                self.vx = 3.2
-                self.vy = 2.4
+            # When physics is first turned on, kick off with a natural glide
+            self.vx = 4.5
+            self.vy = 3.2
+            self._set_scale(1.5)
             self._pos_x = float(self.x())
             self._pos_y = float(self.y())
             if self.isVisible():
                 self._physics_timer.start()
         else:
             self._physics_timer.stop()
+            self.vx = 0.0
+            self.vy = 0.0
             self._jiggle_frames = 0
+            self._set_scale(1.0)
             self._keep_within_current_screen()
 
         self.physics_toggled_signal.emit(self.physics_enabled)
@@ -206,61 +225,76 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         else:
             self._jiggle_offset_y = 0.0
 
-        # Stationary state (stopped by holding still)
-        if abs(self.vx) < 0.05 and abs(self.vy) < 0.05:
+        current_speed = math.hypot(self.vx, self.vy)
+
+        # Natural deceleration / friction model:
+        # Loses ~1.2% speed per frame, sliding naturally across the monitor and smoothly stopping
+        if current_speed > 0.18:
+            # Active movement -> maintain 1.5x scale
+            if abs(self.scale_factor - 1.5) > 0.01:
+                self._set_scale(1.5)
+
+            friction = 0.988
+            self.vx *= friction
+            self.vy *= friction
+
+            # Advance position
+            self._pos_x += self.vx
+            self._pos_y += self.vy
+
+            center_pt = QtCore.QPoint(int(self._pos_x + self.width() / 2), int(self._pos_y + self.height() / 2))
+            screen = QtGui.QGuiApplication.screenAt(center_pt)
+            if not screen:
+                screen = QtGui.QGuiApplication.primaryScreen()
+
+            if screen:
+                geo = screen.availableGeometry()
+                bounced = False
+                restitution = 0.75  # Absorbs 25% energy on wall impact
+
+                if self._pos_x < geo.left():
+                    self._pos_x = float(geo.left())
+                    self.vx = abs(self.vx) * restitution + random.uniform(-0.15, 0.15)
+                    bounced = True
+                elif self._pos_x + self.width() > geo.right():
+                    self._pos_x = float(geo.right() - self.width())
+                    self.vx = -(abs(self.vx) * restitution + random.uniform(-0.15, 0.15))
+                    bounced = True
+
+                if self._pos_y < geo.top():
+                    self._pos_y = float(geo.top())
+                    self.vy = abs(self.vy) * restitution + random.uniform(-0.15, 0.15)
+                    bounced = True
+                elif self._pos_y + self.height() > geo.bottom():
+                    self._pos_y = float(geo.bottom() - self.height())
+                    self.vy = -(abs(self.vy) * restitution + random.uniform(-0.15, 0.15))
+                    bounced = True
+
+                if bounced:
+                    self._trigger_jiggle()
+
+            self.move(int(self._pos_x), int(self._pos_y + self._jiggle_offset_y))
+
+        else:
+            # Speed is near zero -> coast to a full stop and revert to normal 1.0x size!
+            self.vx = 0.0
+            self.vy = 0.0
+            if abs(self.scale_factor - 1.0) > 0.01:
+                self._set_scale(1.0)
+
             if self._jiggle_frames > 0:
                 self.move(int(self._pos_x), int(self._pos_y + self._jiggle_offset_y))
-            return
-
-        # Advance positions
-        self._pos_x += self.vx
-        self._pos_y += self.vy
-
-        center_pt = QtCore.QPoint(int(self._pos_x + self.width() / 2), int(self._pos_y + self.height() / 2))
-        screen = QtGui.QGuiApplication.screenAt(center_pt)
-        if not screen:
-            screen = QtGui.QGuiApplication.primaryScreen()
-
-        if screen:
-            geo = screen.availableGeometry()
-            bounced = False
-
-            if self._pos_x < geo.left():
-                self._pos_x = float(geo.left())
-                self.vx = abs(self.vx) + random.uniform(-0.25, 0.25)
-                bounced = True
-            elif self._pos_x + self.width() > geo.right():
-                self._pos_x = float(geo.right() - self.width())
-                self.vx = -(abs(self.vx) + random.uniform(-0.25, 0.25))
-                bounced = True
-
-            if self._pos_y < geo.top():
-                self._pos_y = float(geo.top())
-                self.vy = abs(self.vy) + random.uniform(-0.25, 0.25)
-                bounced = True
-            elif self._pos_y + self.height() > geo.bottom():
-                self._pos_y = float(geo.bottom() - self.height())
-                self.vy = -(abs(self.vy) + random.uniform(-0.25, 0.25))
-                bounced = True
-
-            if bounced:
-                self._trigger_jiggle()
-                speed = math.hypot(self.vx, self.vy)
-                if speed > 0:
-                    clamped_speed = max(2.5, min(7.5, speed))
-                    self.vx = (self.vx / speed) * clamped_speed
-                    self.vy = (self.vy / speed) * clamped_speed
-
-        self.move(int(self._pos_x), int(self._pos_y + self._jiggle_offset_y))
 
     def _trigger_jiggle(self):
-        self._jiggle_frames = 12
+        self._jiggle_frames = 10
 
     def _kickstart_physics(self):
+        """Fling the widget into motion at 1.5x size."""
         angle = random.uniform(0.2, math.pi * 1.8)
-        speed = 3.6
+        speed = 8.0
         self.vx = math.cos(angle) * speed
         self.vy = math.sin(angle) * speed
+        self._set_scale(1.5)
         self._trigger_jiggle()
 
     def show_widget(self, state: str, remaining_seconds: int):
@@ -300,7 +334,7 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         super().hideEvent(event)
         self._physics_timer.stop()
 
-    # Dragging & throwing mechanics
+    # Dragging & Throwing Mechanics
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -320,7 +354,6 @@ class FloatingTimerWidget(QtWidgets.QWidget):
 
             now = time.time()
             self._drag_samples.append((now, event.globalPosition().toPoint()))
-            # Keep samples from recent 250ms
             self._drag_samples = [(t, p) for t, p in self._drag_samples if now - t <= 0.25]
             event.accept()
 
@@ -338,15 +371,23 @@ class FloatingTimerWidget(QtWidgets.QWidget):
                 dist = math.hypot(dx, dy)
                 speed_px_sec = dist / max(dt, 0.001)
 
-                # "if held still it stops all movement"
-                if dt >= 0.08 and speed_px_sec < 100.0:
+                # "when held still it should automatically revert back to its normal size"
+                if dt >= 0.08 and speed_px_sec < 90.0:
                     self.vx = 0.0
                     self.vy = 0.0
-                elif speed_px_sec >= 100.0:
+                    self._set_scale(1.0)  # Revert immediately to normal 1.0x size!
+                elif speed_px_sec >= 90.0:
+                    # User threw/flung the widget -> impart velocity & expand to 1.5x size!
                     scale = 1.0 / (dt * 60.0)
-                    self.vx = max(-10.0, min(10.0, dx * scale))
-                    self.vy = max(-10.0, min(10.0, dy * scale))
+                    self.vx = max(-14.0, min(14.0, dx * scale))
+                    self.vy = max(-14.0, min(14.0, dy * scale))
+                    self._set_scale(1.5)
                     self._trigger_jiggle()
+            elif self.physics_enabled and len(self._drag_samples) < 2:
+                # Simple click without movement: revert to 1.0x normal size
+                self.vx = 0.0
+                self.vy = 0.0
+                self._set_scale(1.0)
 
             self._drag_samples.clear()
             event.accept()
@@ -381,7 +422,7 @@ class FloatingTimerWidget(QtWidgets.QWidget):
 
         menu.addSeparator()
 
-        action_physics = menu.addAction("⚽ Physics Mode (Bouncing & Sliding)")
+        action_physics = menu.addAction("⚽ Physics Mode (Bouncing, Friction & 1.5x)")
         action_physics.setCheckable(True)
         action_physics.setChecked(self.physics_enabled)
         action_physics.toggled.connect(self.set_physics_enabled)

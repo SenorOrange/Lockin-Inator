@@ -79,7 +79,7 @@ class SyncServerHandler(BaseHTTPRequestHandler):
                         # Keep-alive heartbeat comment every few seconds
                         self.wfile.write(b": keep-alive\n\n")
                         self.wfile.flush()
-            except (ConnectionResetError, BrokenPipeError):
+            except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
                 pass
             finally:
                 self.server.unregister_sse_client(client_queue)
