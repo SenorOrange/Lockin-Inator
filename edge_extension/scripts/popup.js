@@ -5,6 +5,7 @@ const badge = document.getElementById("status-badge");
 const timer = document.getElementById("timer-display");
 const syncInfo = document.getElementById("sync-status");
 const btn = document.getElementById("btn-action");
+const btnEnd = document.getElementById("btn-end");
 
 let currentState = "IDLE";
 
@@ -28,6 +29,10 @@ async function fetchStatus() {
         btn.disabled = true;
         btn.style.backgroundColor = "#1e293b";
         btn.style.color = "#64748b";
+        if (btnEnd) {
+          btnEnd.style.display = "block";
+          btnEnd.textContent = "🛑 End Study Session Early";
+        }
       } else if (data.state === "BREAK") {
         badge.className = "badge break";
         badge.textContent = "☕ AI REVIEW";
@@ -35,6 +40,10 @@ async function fetchStatus() {
         btn.disabled = false;
         btn.style.backgroundColor = "#2563eb";
         btn.style.color = "#ffffff";
+        if (btnEnd) {
+          btnEnd.style.display = "block";
+          btnEnd.textContent = "🛑 Return to Idle (End Session)";
+        }
       } else {
         badge.className = "badge idle";
         badge.textContent = "💤 IDLE";
@@ -43,13 +52,35 @@ async function fetchStatus() {
         btn.style.backgroundColor = "#2563eb";
         btn.style.color = "#ffffff";
         timer.textContent = "50:00";
+        if (btnEnd) {
+          btnEnd.style.display = "none";
+        }
       }
     }
   } catch (e) {
     syncInfo.className = "sync-info disconnected";
     syncInfo.textContent = "⚪ PC App Offline (Launch PC App)";
     timer.textContent = "--:--";
+    if (btnEnd) {
+      btnEnd.style.display = "none";
+    }
   }
+}
+
+if (btnEnd) {
+  btnEnd.addEventListener("click", async () => {
+    const promptMsg = currentState === "BREAK" 
+      ? "End break and return to Idle mode?"
+      : "Are you sure you want to end your study session early? All blocked websites and desktop applications will be unlocked.";
+    if (confirm(promptMsg)) {
+      await fetch(ACTION_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RESET" }),
+      });
+      fetchStatus();
+    }
+  });
 }
 
 btn.addEventListener("click", async () => {

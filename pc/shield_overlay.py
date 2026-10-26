@@ -14,6 +14,7 @@ LOGO_PATH = ASSETS_DIR / "lockin_logo.png"
 class SingleScreenShield(QtWidgets.QWidget):
     back_to_study_signal = QtCore.pyqtSignal()
     emergency_unlock_signal = QtCore.pyqtSignal()
+    end_session_signal = QtCore.pyqtSignal()
 
     def __init__(self, screen, is_interactive=True, parent=None):
         super().__init__(parent)
@@ -128,8 +129,8 @@ class SingleScreenShield(QtWidgets.QWidget):
             self.btn_back.clicked.connect(self._on_back_clicked)
             card_layout.addWidget(self.btn_back)
 
-            # High-friction emergency unlock challenge
-            self.btn_emergency = QtWidgets.QPushButton("⚠️ Early Unlock Challenge...", self.card)
+            # High-friction emergency unlock challenge (Early Break)
+            self.btn_emergency = QtWidgets.QPushButton("⚠️ Request Early Break (Challenge Required)...", self.card)
             self.btn_emergency.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
             self.btn_emergency.setStyleSheet("""
                 QPushButton {
@@ -140,11 +141,30 @@ class SingleScreenShield(QtWidgets.QWidget):
                     padding: 4px;
                 }
                 QPushButton:hover {
-                    color: #f87171;
+                    color: #38bdf8;
                 }
             """)
             self.btn_emergency.clicked.connect(self._open_friction_challenge)
             card_layout.addWidget(self.btn_emergency)
+
+            # High-friction End Study Session
+            self.btn_end = QtWidgets.QPushButton("🛑 End Study Session (Challenge Required)...", self.card)
+            self.btn_end.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+            self.btn_end.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #ef4444;
+                    border: none;
+                    font-size: 12px;
+                    padding: 4px;
+                }
+                QPushButton:hover {
+                    color: #fca5a5;
+                    text-decoration: underline;
+                }
+            """)
+            self.btn_end.clicked.connect(self._open_end_session_challenge)
+            card_layout.addWidget(self.btn_end)
 
         main_layout.addWidget(self.card)
 
@@ -164,9 +184,28 @@ class SingleScreenShield(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, self.back_to_study_signal.emit)
 
     def _open_friction_challenge(self):
-        dlg = FrictionChallengeDialog(self, delay_seconds=15)
+        dlg = FrictionChallengeDialog(
+            self,
+            delay_seconds=10,
+            title="Request Early Break",
+            target_phrase="I am interrupting my study session early",
+            button_text="Unlock AI Review",
+            explanation="This will transition you into a 10-minute AI Review break window."
+        )
         if dlg.exec():
             QtCore.QTimer.singleShot(50, self.emergency_unlock_signal.emit)
+
+    def _open_end_session_challenge(self):
+        dlg = FrictionChallengeDialog(
+            self,
+            delay_seconds=10,
+            title="End Study Session Early",
+            target_phrase="I want to end my study session now",
+            button_text="End Session & Unlock",
+            explanation="Ending your study session early will disarm the focus shields and return Lockin-Inator to Idle. Type the phrase below to confirm."
+        )
+        if dlg.exec():
+            QtCore.QTimer.singleShot(50, self.end_session_signal.emit)
 
 
 class MultiScreenShield(QtCore.QObject):
@@ -176,6 +215,7 @@ class MultiScreenShield(QtCore.QObject):
     """
     back_to_study_signal = QtCore.pyqtSignal()
     emergency_unlock_signal = QtCore.pyqtSignal()
+    end_session_signal = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -201,6 +241,7 @@ class MultiScreenShield(QtCore.QObject):
             if is_primary:
                 w.back_to_study_signal.connect(self.back_to_study_signal.emit)
                 w.emergency_unlock_signal.connect(self.emergency_unlock_signal.emit)
+                w.end_session_signal.connect(self.end_session_signal.emit)
             self.windows.append(w)
 
     def isVisible(self):

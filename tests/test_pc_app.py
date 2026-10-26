@@ -128,14 +128,19 @@ def test_dashboard_window(qapp, tmp_path):
     assert dash.timer_label.text() == "25:00"
 
     # State update
+    dash.show()
     dash.update_state("STUDY", 25 * 60)
     assert "STUDY MODE ACTIVE" in dash.badge_status.text()
+    assert dash.btn_end_session.isVisible()
 
     dash.update_state("BREAK", 10 * 60)
     assert "AI REVIEW WINDOW" in dash.badge_status.text()
+    assert dash.btn_end_session.isVisible()
 
     dash.update_state("IDLE", 50 * 60)
     assert "IDLE" in dash.badge_status.text()
+    assert not dash.btn_end_session.isVisible()
+    dash.hide()
 
 
 def test_state_transitions(qapp, tmp_path):

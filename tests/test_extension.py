@@ -76,6 +76,7 @@ def test_block_screen_contains_key_elements():
     assert "YouTube Short Blocked" in yt_script
     assert "isStudyModeActive" in yt_script
     assert "showFullStudyOverlay" in yt_script
+    assert "focuslens-end-session-btn" in yt_script
 
     ig_script = (EXT_DIR / "scripts" / "instagram_blocker.js").read_text(encoding="utf-8")
     assert "Instagram Blocked During Study" in ig_script
@@ -83,11 +84,13 @@ def test_block_screen_contains_key_elements():
     assert "Open Direct Messages" in ig_script
     assert "isStudyModeActive" in ig_script
     assert "showFullStudyOverlay" in ig_script
+    assert "focuslens-end-session-btn" in ig_script
 
     gen_script = (EXT_DIR / "scripts" / "general_blocker.js").read_text(encoding="utf-8")
     assert "Blocked During Study" in gen_script
     assert "getSiteDisplayName" in gen_script
     assert "isStudyModeActive" in gen_script
+    assert "focuslens-end-session-btn" in gen_script
 
     sync_script = (EXT_DIR / "scripts" / "sync_client.js").read_text(encoding="utf-8")
     assert "window.LockinSync" in sync_script

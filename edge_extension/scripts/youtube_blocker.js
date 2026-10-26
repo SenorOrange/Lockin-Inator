@@ -73,6 +73,7 @@
                 </div>
                 <div class="focuslens-actions">
                     <button id="focuslens-close-tab-btn" class="focuslens-btn-primary">⬅️ Close Tab & Return to Studying</button>
+                    <button id="focuslens-end-session-btn" class="focuslens-btn-secondary" style="margin-top: 6px; color: #f87171; border-color: rgba(239, 68, 68, 0.4);">🛑 End Study Session Early</button>
                 </div>
             </div>
         `;
@@ -90,6 +91,20 @@
                     window.history.back();
                 } else {
                     window.location.href = 'about:blank';
+                }
+            });
+        }
+
+        var endSessionBtn = document.getElementById('focuslens-end-session-btn');
+        if (endSessionBtn) {
+            endSessionBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (confirm('Are you sure you want to end your study session early? All blocked sites and applications will be unlocked.')) {
+                    fetch('http://127.0.0.1:8765/api/action', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'RESET' })
+                    }).catch(function() {});
                 }
             });
         }

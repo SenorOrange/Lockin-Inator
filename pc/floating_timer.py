@@ -13,6 +13,7 @@ LOGO_PATH = ASSETS_DIR / "lockin_logo.png"
 class FloatingTimerWidget(QtWidgets.QWidget):
     lock_in_early_signal = QtCore.pyqtSignal()
     open_dashboard_signal = QtCore.pyqtSignal()
+    end_session_signal = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -155,3 +156,32 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self.open_dashboard_signal.emit()
             event.accept()
+
+    def contextMenuEvent(self, event):
+        menu = QtWidgets.QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #0f172a;
+                color: #f8fafc;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 14px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #2563eb;
+            }
+        """)
+
+        action_dash = menu.addAction("📱 Open Dashboard")
+        action_dash.triggered.connect(self.open_dashboard_signal.emit)
+
+        if self.state in ("STUDY", "BREAK"):
+            menu.addSeparator()
+            action_end = menu.addAction("🛑 End Study Session...")
+            action_end.triggered.connect(self.end_session_signal.emit)
+
+        menu.exec(event.globalPos())

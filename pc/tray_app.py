@@ -45,11 +45,13 @@ class LockinInatorPC(QtCore.QObject):
         self.shield_overlay = MultiScreenShield()
         self.shield_overlay.back_to_study_signal.connect(self._handle_back_to_study)
         self.shield_overlay.emergency_unlock_signal.connect(self._handle_emergency_unlock)
+        self.shield_overlay.end_session_signal.connect(self.reset_session)
 
         # On-screen floating timer widget (compact, draggable pill)
         self.floating_widget = FloatingTimerWidget()
         self.floating_widget.lock_in_early_signal.connect(self.start_study_session)
         self.floating_widget.open_dashboard_signal.connect(self.show_dashboard)
+        self.floating_widget.end_session_signal.connect(self._prompt_end_session)
         self.break_pill = self.floating_widget  # backwards compatibility
 
         # Local Wi-Fi Sync Hub (Syncs PC, Edge Extension, and Android Phone)
@@ -145,6 +147,20 @@ class LockinInatorPC(QtCore.QObject):
             break_min = self.config_manager.get("break_duration_minutes", 10)
             action_break = self.menu.addAction(f"☕ Start AI Review Window ({break_min}m)")
             action_break.triggered.connect(lambda: self.start_break_session())
+
+        if self.state == STATE_STUDY:
+            action_break_early = self.menu.addAction("☕ Request Early Break (Challenge)...")
+            action_break_early.triggered.connect(self._prompt_early_break)
+
+            action_end_study = self.menu.addAction("🛑 End Study Session (Challenge)...")
+            action_end_study.triggered.connect(self._prompt_end_session)
+
+        if self.state == STATE_BREAK:
+            action_lock_early = self.menu.addAction("🔒 Lock In Early (Start Study)")
+            action_lock_early.triggered.connect(lambda: self.start_study_session())
+
+            action_end_break = self.menu.addAction("🛑 Return to Idle (End Session)")
+            action_end_break.triggered.connect(self.reset_session)
 
         if self.state == STATE_PAUSED:
             action_resume = self.menu.addAction("▶ Resume Timer")
@@ -319,6 +335,34 @@ class LockinInatorPC(QtCore.QObject):
     def _handle_emergency_unlock(self):
         self._notify("🔓 Early Review Window", "Early unlock challenge passed. You have a 10-minute review window.")
         self.start_break_session(duration_minutes=self.config_manager.get("break_duration_minutes", 10))
+
+    def _prompt_end_session(self):
+        if self.state == STATE_BREAK:
+            self.reset_session()
+            return
+
+        dlg = FrictionChallengeDialog(
+            None,
+            delay_seconds=10,
+            title="End Study Session Early",
+            target_phrase="I want to end my study session now",
+            button_text="End Session & Unlock",
+            explanation="Ending your study session early will disarm the focus shields and return Lockin-Inator to Idle. Type the phrase below to confirm."
+        )
+        if dlg.exec():
+            self.reset_session()
+
+    def _prompt_early_break(self):
+        dlg = FrictionChallengeDialog(
+            None,
+            delay_seconds=10,
+            title="Request Early Break",
+            target_phrase="I am interrupting my study session early",
+            button_text="Unlock AI Review",
+            explanation="This will transition you into a 10-minute AI Review break window."
+        )
+        if dlg.exec():
+            self.start_break_session(duration_minutes=self.config_manager.get("break_duration_minutes", 10))
 
     def _play_sound(self, sound_type):
         if self.config_manager.get("sound_enabled", True):

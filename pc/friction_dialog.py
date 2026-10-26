@@ -1,20 +1,33 @@
 """
 Friction Challenge Dialog for Lockin-Inator PC.
-Prevents impulsive early breaks by requiring the user to type a commitment phrase
-and wait through an unskippable countdown before an early AI review break can be triggered.
+Prevents impulsive early breaks or session cancellations by requiring the user to type
+a commitment phrase and wait through a cooldown timer before action can be confirmed.
 """
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 COMMITMENT_PHRASE = "I am interrupting my study session early"
+END_SESSION_PHRASE = "I want to end my study session now"
 
 
 class FrictionChallengeDialog(QtWidgets.QDialog):
-    def __init__(self, parent=None, delay_seconds=15):
+    def __init__(
+        self,
+        parent=None,
+        delay_seconds=10,
+        title="Stop & Think: Early Action Confirmation",
+        target_phrase=COMMITMENT_PHRASE,
+        button_text="Confirm Action",
+        explanation=None
+    ):
         super().__init__(parent)
-        self.target_phrase = COMMITMENT_PHRASE
+        self.target_phrase = target_phrase
         self.remaining_seconds = delay_seconds
-        self.setWindowTitle("Lockin-Inator - Early Break Confirmation")
-        self.setFixedSize(480, 360)
+        self.custom_title = title
+        self.custom_button_text = button_text
+        self.custom_explanation = explanation
+
+        self.setWindowTitle(f"Lockin-Inator - {title}")
+        self.setFixedSize(500, 380)
         self.setStyleSheet("""
             QDialog {
                 background-color: #0f172a;
@@ -89,17 +102,19 @@ class FrictionChallengeDialog(QtWidgets.QDialog):
         icon.setStyleSheet("font-size: 28px;")
         header.addWidget(icon)
 
-        title = QtWidgets.QLabel("Stop & Think: Early Break Request")
+        title = QtWidgets.QLabel(self.custom_title)
         title.setStyleSheet("font-size: 18px; font-weight: 800; color: #f87171;")
         header.addWidget(title)
         header.addStretch()
         layout.addLayout(header)
 
         # Explanation
-        desc = QtWidgets.QLabel(
-            "AI Review breaks are designed to happen when your study timer finishes. "
-            "To prevent impulsive checking, you must type the phrase below and wait for the cooldown timer."
+        default_exp = (
+            "Study sessions are designed to keep you in flow until the timer finishes. "
+            "To prevent impulsive actions, type the phrase below and wait for the cooldown."
         )
+        desc_text = self.custom_explanation if self.custom_explanation else default_exp
+        desc = QtWidgets.QLabel(desc_text)
         desc.setWordWrap(True)
         desc.setStyleSheet("color: #94a3b8; font-size: 13px; line-height: 1.4;")
         layout.addWidget(desc)
@@ -123,7 +138,10 @@ class FrictionChallengeDialog(QtWidgets.QDialog):
         layout.addWidget(self.input_edit)
 
         # Cooldown & Status Label
-        self.status_lbl = QtWidgets.QLabel(f"⏳ Cooldown: {self.remaining_seconds}s remaining...")
+        if self.remaining_seconds > 0:
+            self.status_lbl = QtWidgets.QLabel(f"⏳ Cooldown: {self.remaining_seconds}s remaining...")
+        else:
+            self.status_lbl = QtWidgets.QLabel("✅ Cooldown complete.")
         self.status_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
         layout.addWidget(self.status_lbl)
 
@@ -134,13 +152,14 @@ class FrictionChallengeDialog(QtWidgets.QDialog):
         btn_box.setSpacing(12)
 
         # Default action encourages staying locked in
-        self.btn_cancel = QtWidgets.QPushButton("Keep Studying (Recommended)")
+        self.btn_cancel = QtWidgets.QPushButton("Keep Studying (Cancel)")
         self.btn_cancel.setObjectName("btnCancel")
         self.btn_cancel.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
         self.btn_cancel.clicked.connect(self.reject)
         btn_box.addWidget(self.btn_cancel)
 
-        self.btn_unlock = QtWidgets.QPushButton(f"Unlock Early ({self.remaining_seconds}s)")
+        initial_btn_text = f"{self.custom_button_text} ({self.remaining_seconds}s)" if self.remaining_seconds > 0 else self.custom_button_text
+        self.btn_unlock = QtWidgets.QPushButton(initial_btn_text)
         self.btn_unlock.setObjectName("btnUnlock")
         self.btn_unlock.setEnabled(False)
         self.btn_unlock.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
@@ -154,7 +173,7 @@ class FrictionChallengeDialog(QtWidgets.QDialog):
             self.remaining_seconds -= 1
             self.status_lbl.setText(f"⏳ Cooldown: {self.remaining_seconds}s remaining...")
             if not self.btn_unlock.isEnabled():
-                self.btn_unlock.setText(f"Unlock Early ({self.remaining_seconds}s)")
+                self.btn_unlock.setText(f"{self.custom_button_text} ({self.remaining_seconds}s)")
         else:
             self.timer.stop()
             self.status_lbl.setText("✅ Cooldown complete.")
@@ -172,10 +191,10 @@ class FrictionChallengeDialog(QtWidgets.QDialog):
 
         if phrase_matched and time_elapsed:
             self.btn_unlock.setEnabled(True)
-            self.btn_unlock.setText("Unlock AI Review Early")
+            self.btn_unlock.setText(self.custom_button_text)
         else:
             self.btn_unlock.setEnabled(False)
             if self.remaining_seconds > 0:
-                self.btn_unlock.setText(f"Unlock Early ({self.remaining_seconds}s)")
+                self.btn_unlock.setText(f"{self.custom_button_text} ({self.remaining_seconds}s)")
             else:
                 self.btn_unlock.setText("Type phrase to unlock")

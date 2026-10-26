@@ -203,12 +203,36 @@ class DashboardWindow(QtWidgets.QWidget):
                 padding: 4px;
             }
             QPushButton:hover {
-                color: #f87171;
+                color: #38bdf8;
             }
         """)
         self.btn_force_break.setVisible(False)
         self.btn_force_break.clicked.connect(self._on_force_break_clicked)
         card_layout.addWidget(self.btn_force_break)
+
+        # High-friction End Study Session button
+        self.btn_end_session = QtWidgets.QPushButton("🛑 End Study Session (Challenge Required)...")
+        self.btn_end_session.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self.btn_end_session.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #ef4444;
+                border: 1px solid rgba(239, 68, 68, 0.4);
+                border-radius: 8px;
+                font-size: 12px;
+                font-weight: 600;
+                padding: 6px;
+                margin-top: 4px;
+            }
+            QPushButton:hover {
+                background-color: rgba(239, 68, 68, 0.15);
+                border-color: #ef4444;
+                color: #fca5a5;
+            }
+        """)
+        self.btn_end_session.setVisible(False)
+        self.btn_end_session.clicked.connect(self._on_end_session_clicked)
+        card_layout.addWidget(self.btn_end_session)
 
         # Sub-controls (Hidden during active lock-in to prevent bypass loopholes)
         self.sub_controls = QtWidgets.QHBoxLayout()
@@ -295,9 +319,39 @@ class DashboardWindow(QtWidgets.QWidget):
             self.start_study_signal.emit(self.selected_duration)
 
     def _on_force_break_clicked(self):
-        dlg = FrictionChallengeDialog(self, delay_seconds=15)
+        dlg = FrictionChallengeDialog(
+            self,
+            delay_seconds=10,
+            title="Request Early Break",
+            target_phrase="I am interrupting my study session early",
+            button_text="Unlock AI Review",
+            explanation="This will transition you into a 10-minute AI Review break window."
+        )
         if dlg.exec():
             self.start_break_signal.emit(self.config_manager.get("break_duration_minutes", 10))
+
+    def _on_end_session_clicked(self):
+        # In break mode, simple confirmation is enough
+        if self.badge_status.text().startswith("☕"):
+            msg = QtWidgets.QMessageBox(self)
+            msg.setWindowTitle("End Study & Break")
+            msg.setText("Are you sure you want to return to Idle mode?")
+            msg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No)
+            msg.setDefaultButton(QtWidgets.QMessageBox.StandardButton.No)
+            if msg.exec() == QtWidgets.QMessageBox.StandardButton.Yes:
+                self.reset_signal.emit()
+            return
+
+        dlg = FrictionChallengeDialog(
+            self,
+            delay_seconds=10,
+            title="End Study Session",
+            target_phrase="I want to end my study session now",
+            button_text="End Session & Unlock",
+            explanation="Ending your study session early will disarm the focus shields and return Lockin-Inator to Idle. Type the phrase below to confirm."
+        )
+        if dlg.exec():
+            self.reset_signal.emit()
 
     def _toggle_pause(self):
         if self.btn_pause.text() == "⏸ Pause":
@@ -316,6 +370,8 @@ class DashboardWindow(QtWidgets.QWidget):
             self.btn_main.setEnabled(False)
             self.btn_main.setStyleSheet("background-color: #1e293b; color: #64748b; border: 1px solid #334155; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700;")
             self.btn_force_break.setVisible(True)
+            self.btn_end_session.setText("🛑 End Study Session (Challenge Required)...")
+            self.btn_end_session.setVisible(True)
             self.btn_pause.setVisible(False)
             self.btn_reset.setVisible(False)
 
@@ -326,6 +382,8 @@ class DashboardWindow(QtWidgets.QWidget):
             self.btn_main.setEnabled(True)
             self.btn_main.setStyleSheet("background-color: #2563eb; color: #ffffff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 700;")
             self.btn_force_break.setVisible(False)
+            self.btn_end_session.setText("🛑 Return to Idle (End Break)")
+            self.btn_end_session.setVisible(True)
             self.btn_pause.setVisible(False)
             self.btn_reset.setVisible(False)
 
@@ -341,6 +399,7 @@ class DashboardWindow(QtWidgets.QWidget):
             self.btn_main.setEnabled(True)
             self.btn_main.setStyleSheet("background-color: #2563eb; color: #ffffff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 700;")
             self.btn_force_break.setVisible(False)
+            self.btn_end_session.setVisible(False)
             self.btn_pause.setVisible(False)
             self.btn_reset.setVisible(False)
             mins = self.selected_duration
