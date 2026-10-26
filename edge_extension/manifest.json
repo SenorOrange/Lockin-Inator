@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lockin-Inator - Reels, Shorts & Focus Blocker",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Full study lockouts for distracting sites (Instagram, YouTube, Reddit, TikTok, X) during study sessions; shields Reels & Shorts during breaks.",
   "icons": {
     "16": "icons/icon16.png",

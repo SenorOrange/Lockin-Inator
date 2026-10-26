@@ -16,7 +16,7 @@ def test_manifest_is_valid():
 
     assert data["manifest_version"] == 3
     assert "name" in data
-    assert data["version"] == "1.5.0"
+    assert data["version"] == "1.6.0"
     assert "declarativeNetRequest" in data["permissions"]
     assert "storage" in data["permissions"]
     assert "declarative_net_request" in data
