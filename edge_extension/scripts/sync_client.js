@@ -59,6 +59,7 @@
 
   function applyNewState(newState) {
     const prevState = syncState.state;
+    const prevConnected = syncState.connected;
     const prevSeconds = syncState.remaining_seconds;
 
     syncState = {
@@ -78,7 +79,24 @@
 
     updateOverlayUI();
 
-    if (prevState !== syncState.state || Math.abs(prevSeconds - syncState.remaining_seconds) > 1) {
+    if (prevState !== syncState.state || prevConnected !== syncState.connected || Math.abs(prevSeconds - syncState.remaining_seconds) > 1) {
+      notifyListeners();
+    }
+  }
+
+  function handleDisconnect() {
+    const wasActive = syncState.connected || syncState.state !== "IDLE";
+    syncState.connected = false;
+    syncState.state = "IDLE";
+    syncState.remaining_seconds = 0;
+
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ lockin_sync_state: syncState });
+    }
+
+    updateOverlayUI();
+
+    if (wasActive) {
       notifyListeners();
     }
   }
@@ -103,12 +121,12 @@
 
     const timeStr = formatTime(syncState.remaining_seconds);
 
-    if (syncState.state === "STUDY") {
+    if (syncState.connected && syncState.state === "STUDY") {
       syncBadge.style.backgroundColor = "#032b43";
       syncBadge.style.color = "#38bdf8";
       syncBadge.style.border = "1px solid #0284c7";
       syncBadge.textContent = `🔒 Study Mode Synced: ${timeStr} remaining (PC + Phone + Browser)`;
-    } else if (syncState.state === "BREAK") {
+    } else if (syncState.connected && syncState.state === "BREAK") {
       syncBadge.style.backgroundColor = "#064e3b";
       syncBadge.style.color = "#34d399";
       syncBadge.style.border = "1px solid #059669";
@@ -117,14 +135,15 @@
       syncBadge.style.backgroundColor = "#1e293b";
       syncBadge.style.color = "#94a3b8";
       syncBadge.style.border = "1px solid #334155";
-      syncBadge.textContent = "🛡️ Lockin-Inator: Connected to PC Hub";
+      syncBadge.textContent = "🛡️ Lockin-Inator: PC App Idle / Offline";
     }
   }
 
-  // 1. Instant check from chrome.storage.local
+  // 1. Initial check from chrome.storage.local
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(["lockin_sync_state"], function (res) {
       if (res && res.lockin_sync_state) {
+        // If storage says study but we're not sure yet, check network immediately
         applyNewState(res.lockin_sync_state);
       }
     });
@@ -142,15 +161,19 @@
   // 2. Poll status endpoint
   async function pollSyncStatus() {
     try {
-      const res = await fetch(SYNC_URL);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(SYNC_URL, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (res.ok) {
         const data = await res.json();
         applyNewState({ ...data, connected: true });
       } else {
-        syncState.connected = false;
+        handleDisconnect();
       }
     } catch (e) {
-      syncState.connected = false;
+      handleDisconnect();
     }
   }
 
@@ -173,16 +196,18 @@
           eventSource.close();
           eventSource = null;
         }
+        handleDisconnect();
         setTimeout(connectEventSource, 4000);
       };
     } catch (e) {
+      handleDisconnect();
       setTimeout(connectEventSource, 4000);
     }
   }
 
   // 4. Local tick timer so countdown drops smoothly every second
   setInterval(function () {
-    if ((syncState.state === "STUDY" || syncState.state === "BREAK") && syncState.remaining_seconds > 0) {
+    if (syncState.connected && (syncState.state === "STUDY" || syncState.state === "BREAK") && syncState.remaining_seconds > 0) {
       syncState.remaining_seconds--;
       updateOverlayUI();
     }
@@ -216,13 +241,14 @@
       return { ...syncState };
     },
     isStudyMode: function () {
-      return syncState.state === "STUDY";
+      // Must be BOTH connected to the PC hub AND state === "STUDY"
+      return Boolean(syncState.connected && syncState.state === "STUDY");
     },
     isBreakMode: function () {
-      return syncState.state === "BREAK";
+      return Boolean(syncState.connected && syncState.state === "BREAK");
     },
     isIdleMode: function () {
-      return syncState.state === "IDLE";
+      return !syncState.connected || syncState.state === "IDLE";
     },
     getRemainingSeconds: function () {
       return syncState.remaining_seconds;
