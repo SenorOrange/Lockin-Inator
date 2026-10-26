@@ -15,6 +15,7 @@ from .break_pill import BreakPill
 from .floating_timer import FloatingTimerWidget
 from .settings_dialog import SettingsDialog
 from .dashboard_window import DashboardWindow
+from .friction_dialog import FrictionChallengeDialog
 from .sync_server import SyncManager
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
