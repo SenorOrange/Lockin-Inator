@@ -23,6 +23,9 @@
     "storage",
     "declarativeNetRequest"
   ],
+  "background": {
+    "service_worker": "scripts/background.js"
+  },
   "host_permissions": [
     "*://*.youtube.com/*",
     "*://*.instagram.com/*",

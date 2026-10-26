@@ -72,11 +72,6 @@
       syncState.blocked_sites = newState.blocked_sites;
     }
 
-    // Persist to chrome.storage.local for instantaneous cold-start reads
-    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.set({ lockin_sync_state: syncState });
-    }
-
     updateOverlayUI();
 
     if (prevState !== syncState.state || prevConnected !== syncState.connected || Math.abs(prevSeconds - syncState.remaining_seconds) > 1) {
@@ -85,14 +80,23 @@
   }
 
   function handleDisconnect() {
+    // Only disconnect if background worker isn't providing a connected state
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["lockin_sync_state"], function (res) {
+        if (!res || !res.lockin_sync_state || !res.lockin_sync_state.connected) {
+          executeDisconnect();
+        }
+      });
+    } else {
+      executeDisconnect();
+    }
+  }
+
+  function executeDisconnect() {
     const wasActive = syncState.connected || syncState.state !== "IDLE";
     syncState.connected = false;
     syncState.state = "IDLE";
     syncState.remaining_seconds = 0;
-
-    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.set({ lockin_sync_state: syncState });
-    }
 
     updateOverlayUI();
 
@@ -110,10 +114,11 @@
   }
 
   function updateOverlayUI() {
-    const timerEl = document.getElementById("focuslens-live-timer");
-    if (timerEl) {
-      timerEl.textContent = formatTime(syncState.remaining_seconds);
-    }
+    const timerEls = document.querySelectorAll("#focuslens-live-timer, .focuslens-study-timer-digits");
+    const formatted = formatTime(syncState.remaining_seconds);
+    timerEls.forEach(el => {
+      el.textContent = formatted;
+    });
 
     const card = document.querySelector(".focuslens-card");
     if (!card) return;
@@ -127,7 +132,7 @@
       card.appendChild(syncBadge);
     }
 
-    const timeStr = formatTime(syncState.remaining_seconds);
+    const timeStr = formatted;
 
     if (syncState.connected && syncState.state === "STUDY") {
       syncBadge.style.backgroundColor = "#032b43";
@@ -151,13 +156,7 @@
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(["lockin_sync_state"], function (res) {
       if (res && res.lockin_sync_state) {
-        // Cold boot: default to IDLE and connected=false until verified with live PC hub
-        const safeInit = { ...res.lockin_sync_state, connected: false };
-        if (safeInit.state === "STUDY") {
-          safeInit.state = "IDLE";
-          safeInit.remaining_seconds = 0;
-        }
-        applyNewState(safeInit);
+        applyNewState(res.lockin_sync_state);
       }
     });
 
@@ -171,11 +170,11 @@
     });
   }
 
-  // 2. Poll status endpoint
+  // 2. Poll status endpoint directly (with CSP catch)
   async function pollSyncStatus() {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
       const res = await fetch(SYNC_URL, { signal: controller.signal });
       clearTimeout(timeoutId);
 
@@ -186,11 +185,12 @@
         handleDisconnect();
       }
     } catch (e) {
-      handleDisconnect();
+      // Content script fetch may fail due to page CSP (e.g. on Instagram).
+      // Background worker handles actual fetching, so do not immediately disconnect here.
     }
   }
 
-  // 3. Connect to live SSE stream for instant updates
+  // 3. Connect to live SSE stream
   let eventSource = null;
   function connectEventSource() {
     try {
@@ -209,26 +209,24 @@
           eventSource.close();
           eventSource = null;
         }
-        handleDisconnect();
-        setTimeout(connectEventSource, 4000);
+        setTimeout(connectEventSource, 5000);
       };
     } catch (e) {
-      handleDisconnect();
-      setTimeout(connectEventSource, 4000);
+      // SSE blocked by page CSP
     }
   }
 
   // 4. Local tick timer so countdown drops smoothly every second
   setInterval(function () {
-    if (syncState.connected && (syncState.state === "STUDY" || syncState.state === "BREAK") && syncState.remaining_seconds > 0) {
+    if (syncState.remaining_seconds > 0 && (syncState.state === "STUDY" || syncState.state === "BREAK")) {
       syncState.remaining_seconds--;
       updateOverlayUI();
     }
   }, 1000);
 
-  // Initial network fetches
+  // Initial network attempts
   pollSyncStatus();
-  setInterval(pollSyncStatus, 1500);
+  setInterval(pollSyncStatus, 2000);
   connectEventSource();
 
   // Watch for dynamic block overlays added to the DOM
@@ -254,7 +252,6 @@
       return { ...syncState };
     },
     isStudyMode: function () {
-      // Must be BOTH connected to the PC hub AND state === "STUDY"
       return Boolean(syncState.connected && syncState.state === "STUDY");
     },
     isBreakMode: function () {
@@ -275,10 +272,24 @@
       const sites = syncState.blocked_sites || DEFAULT_BLOCKED_SITES;
       return sites.some(site => host === site || host.endsWith("." + site));
     },
+    sendAction: function (action, durationMinutes) {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+          type: "REMOTE_ACTION",
+          payload: { action: action, duration_minutes: durationMinutes }
+        });
+      }
+      try {
+        fetch("http://127.0.0.1:8765/api/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: action, duration_minutes: durationMinutes })
+        }).catch(function() {});
+      } catch (e) {}
+    },
     onStateChange: function (callback) {
       if (typeof callback === "function") {
         listeners.push(callback);
-        // Call immediately with current state
         callback(syncState);
       }
     },

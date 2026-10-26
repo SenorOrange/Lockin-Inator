@@ -176,6 +176,12 @@ class LockinInatorPC(QtCore.QObject):
         action_guide = self.menu.addAction("📖 Autopilot Prompt Guide...")
         action_guide.triggered.connect(self._show_autopilot_guide)
 
+        # Widget Physics Mode Toggle
+        action_physics = self.menu.addAction("⚽ Widget Physics Mode (Bouncing & 1.5x)")
+        action_physics.setCheckable(True)
+        action_physics.setChecked(self.floating_widget.physics_enabled)
+        action_physics.toggled.connect(self.floating_widget.set_physics_enabled)
+
         self.menu.addSeparator()
 
         # Quit

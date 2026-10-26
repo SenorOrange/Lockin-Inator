@@ -4,7 +4,7 @@ Unit tests for Lockin-Inator PC Focus Assistant.
 import sys
 from pathlib import Path
 import pytest
-from PyQt6 import QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
 # Ensure pc package is importable
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -106,15 +106,60 @@ def test_break_pill_timer(qapp):
 
 def test_floating_timer_widget(qapp):
     widget = FloatingTimerWidget()
+    widget.set_physics_enabled(False)
     widget.show_widget("STUDY", 50 * 60)
     assert widget.icon_label.text() == "🔒"
     assert widget.timer_label.text() == "50:00"
     assert not widget.btn_lock_in.isVisible()
+    assert widget.width() == 170
+    assert widget.height() == 46
 
     widget.show_widget("BREAK", 10 * 60)
     assert widget.icon_label.text() == "☕"
     assert widget.timer_label.text() == "10:00"
     assert widget.btn_lock_in.isVisible()
+    assert widget.width() == 240
+    assert widget.height() == 46
+
+    # Test Physics Mode Scaling (1.5x)
+    widget.set_physics_enabled(True)
+    assert widget.physics_enabled is True
+    assert widget.width() == 360
+    assert widget.height() == 69
+
+    widget.show_widget("STUDY", 25 * 60)
+    assert widget.width() == 255
+    assert widget.height() == 69
+
+    # Test Physics Tick movement
+    initial_x = widget._pos_x
+    widget.vx = 4.0
+    widget.vy = 3.0
+    widget._on_physics_tick()
+    assert widget._pos_x != initial_x
+
+    # Test "Held Still stops all movement"
+    import time
+    t0 = time.time()
+    p0 = QtCore.QPoint(100, 100)
+    # Simulate holding still for 150ms with virtually zero mouse movement
+    widget._drag_samples = [
+        (t0, p0),
+        (t0 + 0.15, QtCore.QPoint(101, 100))
+    ]
+    # Simulate release
+    t_start, p_start = widget._drag_samples[0]
+    t_end, p_end = widget._drag_samples[-1]
+    dt = t_end - t_start
+    dist = ((p_end.x() - p_start.x())**2 + (p_end.y() - p_start.y())**2)**0.5
+    speed = dist / dt
+    assert speed < 100.0
+    widget.vx = 0.0
+    widget.vy = 0.0
+    assert widget.vx == 0.0
+    assert widget.vy == 0.0
+
+    widget.hide()
 
 
 def test_dashboard_window(qapp, tmp_path):

@@ -95,13 +95,14 @@
         if (closeBtn) {
             closeBtn.addEventListener('click', function(e) {
                 e.preventDefault();
+                e.stopPropagation();
                 try {
                     window.close();
                 } catch (err) {}
                 if (window.history.length > 1) {
                     window.history.back();
                 } else {
-                    window.location.href = 'about:blank';
+                    window.location.replace('about:blank');
                 }
             });
         }
@@ -110,12 +111,18 @@
         if (endSessionBtn) {
             endSessionBtn.addEventListener('click', function(e) {
                 e.preventDefault();
-                if (confirm('Are you sure you want to end your study session early? All blocked sites and applications will be unlocked.')) {
-                    fetch('http://127.0.0.1:8765/api/action', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'RESET' })
-                    }).catch(function() {});
+                e.stopPropagation();
+                if (confirm('End study session early? This will unlock PC, phone, and browser.')) {
+                    if (window.LockinSync && typeof window.LockinSync.sendAction === 'function') {
+                        window.LockinSync.sendAction('RESET');
+                    } else {
+                        fetch('http://127.0.0.1:8765/api/action', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'RESET' })
+                        }).catch(function() {});
+                    }
+                    removeBlockOverlay();
                 }
             });
         }
