@@ -31,17 +31,17 @@ def test_manifest_is_valid():
     assert "128" in data["icons"]
 
 
-def test_rules_json_contains_home_and_reels_redirects():
+def test_rules_json_contains_reels_and_shorts_redirects():
     rules_path = EXT_DIR / "rules.json"
     assert rules_path.exists()
 
     with open(rules_path, "r", encoding="utf-8") as f:
         rules = json.load(f)
 
-    # Verify Instagram Home redirect rule exists
-    home_rules = [r for r in rules if "instagram.com/direct/inbox/" in r.get("action", {}).get("redirect", {}).get("url", "")
-                  and "instagram\\.com/?(?:\\?.*)?(?:#.*)?$" in r.get("condition", {}).get("regexFilter", "")]
-    assert len(home_rules) == 1, "Instagram Home page redirect rule must be present in rules.json"
+    # Verify YouTube Shorts redirect rule exists
+    shorts_rules = [r for r in rules if "youtube.com/watch" in r.get("action", {}).get("redirect", {}).get("regexSubstitution", "")
+                    and "youtube\\.com/shorts" in r.get("condition", {}).get("regexFilter", "")]
+    assert len(shorts_rules) == 1, "YouTube Shorts redirect rule must be present in rules.json"
 
     # Verify Instagram Reels redirect rule exists
     reel_rules = [r for r in rules if "instagram.com/direct/inbox/" in r.get("action", {}).get("redirect", {}).get("url", "")

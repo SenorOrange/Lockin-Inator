@@ -83,6 +83,24 @@ if (btnEnd) {
   });
 }
 
+const btnResetState = document.getElementById("btn-reset-state");
+if (btnResetState) {
+  btnResetState.addEventListener("click", () => {
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({
+        lockin_sync_state: {
+          connected: false,
+          state: "IDLE",
+          remaining_seconds: 0,
+          server_ip: "127.0.0.1",
+        }
+      }, () => {
+        fetchStatus();
+      });
+    }
+  });
+}
+
 btn.addEventListener("click", async () => {
   if (currentState === "IDLE") {
     await fetch(ACTION_URL, {

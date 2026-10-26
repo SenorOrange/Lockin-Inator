@@ -96,6 +96,14 @@
 
     updateOverlayUI();
 
+    // Immediately eradicate any full study lockout screen if PC app is offline
+    const existing = document.getElementById("focuslens-block-overlay");
+    if (existing && existing.getAttribute("data-overlay-type") === "full-study") {
+      existing.remove();
+      if (document.documentElement) document.documentElement.style.overflow = "";
+      if (document.body) document.body.style.overflow = "";
+    }
+
     if (wasActive) {
       notifyListeners();
     }
@@ -143,8 +151,13 @@
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(["lockin_sync_state"], function (res) {
       if (res && res.lockin_sync_state) {
-        // If storage says study but we're not sure yet, check network immediately
-        applyNewState(res.lockin_sync_state);
+        // Cold boot: default to IDLE and connected=false until verified with live PC hub
+        const safeInit = { ...res.lockin_sync_state, connected: false };
+        if (safeInit.state === "STUDY") {
+          safeInit.state = "IDLE";
+          safeInit.remaining_seconds = 0;
+        }
+        applyNewState(safeInit);
       }
     });
 

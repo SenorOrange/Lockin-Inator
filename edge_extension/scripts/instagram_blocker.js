@@ -202,22 +202,12 @@
             return;
         }
 
-        // MODE 2: IDLE OR BREAK -> SELECTIVE BLOCKING
-        // 1. Block Main Home Page -> Auto-redirect to Messages
-        if (isHomePage(currentUrl)) {
-            redirectToInbox();
-            return;
-        }
-
-        // 2. Block Reels -> Show Focus Shield
+        // MODE 2: IDLE OR BREAK -> SELECTIVE BLOCKING (Only Reels)
         if (isReelsPage(currentUrl)) {
             showReelBlockOverlay();
         } else {
             removeBlockOverlay();
         }
-
-        // 3. Rewrite any logo / Home navigation links to point to Messages
-        rewriteHomeLinks();
     }
 
     function rewriteHomeLinks() {
@@ -234,32 +224,14 @@
     var origReplace = history.replaceState;
 
     history.pushState = function(state, title, url) {
-        if (isStudyModeActive()) {
-            var res = origPush.apply(this, arguments);
-            enforceBlockRules(url ? String(url) : window.location.href);
-            return res;
-        }
-        if (url && isHomePage(String(url))) {
-            redirectToInbox();
-            return;
-        }
         var res = origPush.apply(this, arguments);
-        if (url) enforceBlockRules(String(url));
+        enforceBlockRules(url ? String(url) : window.location.href);
         return res;
     };
 
     history.replaceState = function(state, title, url) {
-        if (isStudyModeActive()) {
-            var res = origReplace.apply(this, arguments);
-            enforceBlockRules(url ? String(url) : window.location.href);
-            return res;
-        }
-        if (url && isHomePage(String(url))) {
-            redirectToInbox();
-            return;
-        }
         var res = origReplace.apply(this, arguments);
-        if (url) enforceBlockRules(String(url));
+        enforceBlockRules(url ? String(url) : window.location.href);
         return res;
     };
 
@@ -267,7 +239,7 @@
         enforceBlockRules();
     });
 
-    // Intercept clicks on links pointing to the Home page or Reels
+    // Intercept clicks on links pointing to Reels
     document.addEventListener('click', function(e) {
         if (isStudyModeActive()) {
             e.preventDefault();
@@ -277,12 +249,6 @@
         }
         var link = e.target.closest('a');
         if (link && link.href) {
-            if (isHomePage(link.href)) {
-                e.preventDefault();
-                e.stopPropagation();
-                redirectToInbox();
-                return;
-            }
             if (isReelsPage(link.href)) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -306,19 +272,15 @@
         enforceBlockRules();
     });
 
-    // Observe DOM changes to maintain link rewrites and kill media if blocked
+    // Observe DOM changes to kill media if blocked
     var observer = new MutationObserver(function() {
         if (isStudyModeActive()) {
             killMedia();
             if (!document.getElementById('focuslens-block-overlay')) {
                 showFullStudyOverlay();
             }
-        } else if (isHomePage()) {
-            redirectToInbox();
         } else if (isReelsPage()) {
             killMedia();
-        } else {
-            rewriteHomeLinks();
         }
     });
 
