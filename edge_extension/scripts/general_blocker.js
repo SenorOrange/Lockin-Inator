@@ -45,23 +45,22 @@
         var existing = document.getElementById('focuslens-block-overlay');
         if (existing) existing.remove();
         if (document.documentElement) document.documentElement.style.overflow = '';
-        if (document.body) document.body.style.overflow = '';
+        if (document.body) {
+            document.body.style.overflow = '';
+            document.body.classList.remove('focuslens-study-locked');
+        }
     }
 
     function showStudyBlockOverlay() {
         killMedia();
         var existing = document.getElementById('focuslens-block-overlay');
         if (existing) {
+            if (document.body && existing.parentNode !== document.body) {
+                document.body.appendChild(existing);
+                document.body.classList.add('focuslens-study-locked');
+            }
             return;
         }
-
-        if (!document.body) {
-            document.addEventListener('DOMContentLoaded', showStudyBlockOverlay);
-            return;
-        }
-
-        if (document.documentElement) document.documentElement.style.overflow = 'hidden';
-        document.body.style.overflow = 'hidden';
 
         var overlay = document.createElement('div');
         overlay.id = 'focuslens-block-overlay';
@@ -89,20 +88,68 @@
             </div>
         `;
 
-        document.body.appendChild(overlay);
+        if (document.body) {
+            document.body.appendChild(overlay);
+            document.body.classList.add('focuslens-study-locked');
+            document.body.style.overflow = 'hidden';
+        } else if (document.documentElement) {
+            document.documentElement.appendChild(overlay);
+            var bodyWatcher = new MutationObserver(function() {
+                if (document.body) {
+                    bodyWatcher.disconnect();
+                    document.body.appendChild(overlay);
+                    document.body.classList.add('focuslens-study-locked');
+                    document.body.style.overflow = 'hidden';
+                }
+            });
+            bodyWatcher.observe(document.documentElement, { childList: true });
+        }
+
+        if (document.documentElement) document.documentElement.style.overflow = 'hidden';
+
+        // Dedicated live ticker on this overlay: guarantees smooth decrement every 1000ms
+        var currentRemaining = (window.LockinSync && window.LockinSync.getRemainingSeconds() > 0)
+            ? window.LockinSync.getRemainingSeconds()
+            : 3000;
+
+        var localOverlayTimer = setInterval(function() {
+            var activeOverlay = document.getElementById('focuslens-block-overlay');
+            if (!activeOverlay) {
+                clearInterval(localOverlayTimer);
+                return;
+            }
+            if (window.LockinSync && typeof window.LockinSync.getRemainingSeconds === 'function') {
+                var syncRem = window.LockinSync.getRemainingSeconds();
+                if (syncRem > 0 && Math.abs(syncRem - currentRemaining) > 1) {
+                    currentRemaining = syncRem;
+                }
+            }
+            if (currentRemaining > 0) {
+                currentRemaining--;
+            }
+            var el = document.getElementById('focuslens-live-timer');
+            if (el && window.LockinSync) {
+                el.textContent = window.LockinSync.formatTime(currentRemaining);
+            }
+        }, 1000);
 
         var closeBtn = document.getElementById('focuslens-close-tab-btn');
         if (closeBtn) {
             closeBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                try {
-                    window.close();
-                } catch (err) {}
-                if (window.history.length > 1) {
-                    window.history.back();
+                if (window.LockinSync && typeof window.LockinSync.closeTab === 'function') {
+                    window.LockinSync.closeTab();
                 } else {
-                    window.location.replace('about:blank');
+                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({ type: 'CLOSE_CURRENT_TAB' });
+                    }
+                    try { window.close(); } catch (err) {}
+                    if (window.history.length > 1) {
+                        window.history.back();
+                    } else {
+                        window.location.replace('about:blank');
+                    }
                 }
             });
         }
@@ -115,12 +162,6 @@
                 if (confirm('End study session early? This will unlock PC, phone, and browser.')) {
                     if (window.LockinSync && typeof window.LockinSync.sendAction === 'function') {
                         window.LockinSync.sendAction('RESET');
-                    } else {
-                        fetch('http://127.0.0.1:8765/api/action', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'RESET' })
-                        }).catch(function() {});
                     }
                     removeBlockOverlay();
                 }

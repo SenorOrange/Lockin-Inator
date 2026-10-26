@@ -44,85 +44,106 @@ class SyncServerHandler(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.end_headers()
 
+    def finish(self):
+        try:
+            super().finish()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
+
     def do_GET(self):
-        if self.path.startswith("/api/status"):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self._send_cors_headers()
-            self.end_headers()
+        try:
+            if self.path.startswith("/api/status"):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._send_cors_headers()
+                self.end_headers()
 
-            status_data = self.server.get_status_dict()
-            self.wfile.write(json.dumps(status_data).encode("utf-8"))
+                status_data = self.server.get_status_dict()
+                self.wfile.write(json.dumps(status_data).encode("utf-8"))
 
-        elif self.path.startswith("/api/stream"):
-            # Server-Sent Events (SSE) live push stream
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self._send_cors_headers()
-            self.end_headers()
+            elif self.path.startswith("/api/stream"):
+                # Server-Sent Events (SSE) live push stream
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self._send_cors_headers()
+                self.end_headers()
 
-            client_queue = self.server.register_sse_client()
-            try:
-                # Send immediate initial status
-                init_data = json.dumps(self.server.get_status_dict())
-                self.wfile.write(f"data: {init_data}\n\n".encode("utf-8"))
-                self.wfile.flush()
+                client_queue = self.server.register_sse_client()
+                try:
+                    # Send immediate initial status
+                    init_data = json.dumps(self.server.get_status_dict())
+                    self.wfile.write(f"data: {init_data}\n\n".encode("utf-8"))
+                    self.wfile.flush()
 
-                while self.server.running:
-                    try:
-                        msg = client_queue.get(timeout=1.0)
-                        self.wfile.write(f"data: {msg}\n\n".encode("utf-8"))
-                        self.wfile.flush()
-                    except Exception:
-                        # Keep-alive heartbeat comment every few seconds
-                        self.wfile.write(b": keep-alive\n\n")
-                        self.wfile.flush()
-            except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
-                pass
-            finally:
-                self.server.unregister_sse_client(client_queue)
-        else:
-            self.send_response(404)
-            self._send_cors_headers()
-            self.end_headers()
+                    while self.server.running:
+                        try:
+                            msg = client_queue.get(timeout=1.0)
+                            self.wfile.write(f"data: {msg}\n\n".encode("utf-8"))
+                            self.wfile.flush()
+                        except Exception:
+                            # Keep-alive heartbeat comment every few seconds
+                            self.wfile.write(b": keep-alive\n\n")
+                            self.wfile.flush()
+                except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+                    pass
+                finally:
+                    self.server.unregister_sse_client(client_queue)
+            else:
+                self.send_response(404)
+                self._send_cors_headers()
+                self.end_headers()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
 
     def do_POST(self):
-        if self.path.startswith("/api/action"):
-            content_length = int(self.headers.get("Content-Length", 0))
-            post_data = self.rfile.read(content_length)
+        try:
+            if self.path.startswith("/api/action"):
+                content_length = int(self.headers.get("Content-Length", 0))
+                post_data = self.rfile.read(content_length)
 
-            try:
-                payload = json.loads(post_data.decode("utf-8"))
-            except Exception:
-                payload = {}
+                try:
+                    payload = json.loads(post_data.decode("utf-8"))
+                except Exception:
+                    payload = {}
 
-            action = payload.get("action", "")
-            duration = payload.get("duration_minutes", None)
+                action = payload.get("action", "")
+                duration = payload.get("duration_minutes", None)
 
-            success = self.server.dispatch_action(action, duration)
+                success = self.server.dispatch_action(action, duration)
 
-            self.send_response(200 if success else 400)
-            self.send_header("Content-Type", "application/json")
-            self._send_cors_headers()
-            self.end_headers()
+                self.send_response(200 if success else 400)
+                self.send_header("Content-Type", "application/json")
+                self._send_cors_headers()
+                self.end_headers()
 
-            resp = {"success": success, "status": self.server.get_status_dict()}
-            self.wfile.write(json.dumps(resp).encode("utf-8"))
-        else:
-            self.send_response(404)
-            self._send_cors_headers()
-            self.end_headers()
+                resp = {"success": success, "status": self.server.get_status_dict()}
+                self.wfile.write(json.dumps(resp).encode("utf-8"))
+            else:
+                self.send_response(404)
+                self._send_cors_headers()
+                self.end_headers()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            pass
 
 
 class SyncHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+
     def __init__(self, server_address, RequestHandlerClass, sync_manager):
         super().__init__(server_address, RequestHandlerClass)
         self.sync_manager = sync_manager
         self.running = True
         self.sse_clients = []
         self._lock = threading.Lock()
+
+    def handle_error(self, request, client_address):
+        import sys
+        exc_type, exc_value, _ = sys.exc_info()
+        if exc_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+            return
+        super().handle_error(request, client_address)
 
     def get_status_dict(self):
         return self.sync_manager.get_status()

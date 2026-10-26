@@ -34,17 +34,10 @@
 
     function getFormattedRemainingTime() {
         if (window.LockinSync && typeof window.LockinSync.getRemainingSeconds === 'function') {
-            return window.LockinSync.formatTime(window.LockinSync.getRemainingSeconds());
+            var s = window.LockinSync.getRemainingSeconds();
+            if (s > 0) return window.LockinSync.formatTime(s);
         }
-        return '--:--';
-    }
-
-    function redirectToInbox() {
-        try {
-            window.location.replace(DIRECT_INBOX_URL);
-        } catch (e) {
-            window.location.href = DIRECT_INBOX_URL;
-        }
+        return '50:00';
     }
 
     function killMedia() {
@@ -62,7 +55,10 @@
         var existing = document.getElementById('focuslens-block-overlay');
         if (existing) existing.remove();
         if (document.documentElement) document.documentElement.style.overflow = '';
-        if (document.body) document.body.style.overflow = '';
+        if (document.body) {
+            document.body.style.overflow = '';
+            document.body.classList.remove('focuslens-study-locked');
+        }
     }
 
     function showFullStudyOverlay() {
@@ -70,18 +66,14 @@
         var existing = document.getElementById('focuslens-block-overlay');
         if (existing) {
             if (existing.getAttribute('data-overlay-type') === 'full-study') {
+                if (document.body && existing.parentNode !== document.body) {
+                    document.body.appendChild(existing);
+                    document.body.classList.add('focuslens-study-locked');
+                }
                 return;
             }
             existing.remove();
         }
-
-        if (!document.body) {
-            document.addEventListener('DOMContentLoaded', showFullStudyOverlay);
-            return;
-        }
-
-        if (document.documentElement) document.documentElement.style.overflow = 'hidden';
-        document.body.style.overflow = 'hidden';
 
         var overlay = document.createElement('div');
         overlay.id = 'focuslens-block-overlay';
@@ -108,20 +100,68 @@
             </div>
         `;
 
-        document.body.appendChild(overlay);
+        if (document.body) {
+            document.body.appendChild(overlay);
+            document.body.classList.add('focuslens-study-locked');
+            document.body.style.overflow = 'hidden';
+        } else if (document.documentElement) {
+            document.documentElement.appendChild(overlay);
+            var bodyWatcher = new MutationObserver(function() {
+                if (document.body) {
+                    bodyWatcher.disconnect();
+                    document.body.appendChild(overlay);
+                    document.body.classList.add('focuslens-study-locked');
+                    document.body.style.overflow = 'hidden';
+                }
+            });
+            bodyWatcher.observe(document.documentElement, { childList: true });
+        }
+
+        if (document.documentElement) document.documentElement.style.overflow = 'hidden';
+
+        // Local live countdown ticker: guarantees the countdown drops smoothly every 1000ms!
+        var currentRemaining = (window.LockinSync && window.LockinSync.getRemainingSeconds() > 0)
+            ? window.LockinSync.getRemainingSeconds()
+            : 3000;
+
+        var localOverlayTimer = setInterval(function() {
+            var activeOverlay = document.getElementById('focuslens-block-overlay');
+            if (!activeOverlay) {
+                clearInterval(localOverlayTimer);
+                return;
+            }
+            if (window.LockinSync && typeof window.LockinSync.getRemainingSeconds === 'function') {
+                var syncRem = window.LockinSync.getRemainingSeconds();
+                if (syncRem > 0 && Math.abs(syncRem - currentRemaining) > 1) {
+                    currentRemaining = syncRem;
+                }
+            }
+            if (currentRemaining > 0) {
+                currentRemaining--;
+            }
+            var el = document.getElementById('focuslens-live-timer');
+            if (el && window.LockinSync) {
+                el.textContent = window.LockinSync.formatTime(currentRemaining);
+            }
+        }, 1000);
 
         var closeBtn = document.getElementById('focuslens-close-tab-btn');
         if (closeBtn) {
             closeBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                try {
-                    window.close();
-                } catch (err) {}
-                if (window.history.length > 1) {
-                    window.history.back();
+                if (window.LockinSync && typeof window.LockinSync.closeTab === 'function') {
+                    window.LockinSync.closeTab();
                 } else {
-                    window.location.replace('about:blank');
+                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({ type: 'CLOSE_CURRENT_TAB' });
+                    }
+                    try { window.close(); } catch (err) {}
+                    if (window.history.length > 1) {
+                        window.history.back();
+                    } else {
+                        window.location.replace('about:blank');
+                    }
                 }
             });
         }
@@ -134,12 +174,6 @@
                 if (confirm('End study session early? This will unlock PC, phone, and browser.')) {
                     if (window.LockinSync && typeof window.LockinSync.sendAction === 'function') {
                         window.LockinSync.sendAction('RESET');
-                    } else {
-                        fetch('http://127.0.0.1:8765/api/action', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'RESET' })
-                        }).catch(function() {});
                     }
                     removeBlockOverlay();
                 }
@@ -152,18 +186,13 @@
         var existing = document.getElementById('focuslens-block-overlay');
         if (existing) {
             if (existing.getAttribute('data-overlay-type') === 'reel') {
+                if (document.body && existing.parentNode !== document.body) {
+                    document.body.appendChild(existing);
+                }
                 return;
             }
             existing.remove();
         }
-
-        if (!document.body) {
-            document.addEventListener('DOMContentLoaded', showReelBlockOverlay);
-            return;
-        }
-
-        if (document.documentElement) document.documentElement.style.overflow = 'hidden';
-        document.body.style.overflow = 'hidden';
 
         var overlay = document.createElement('div');
         overlay.id = 'focuslens-block-overlay';
@@ -185,7 +214,21 @@
             </div>
         `;
 
-        document.body.appendChild(overlay);
+        if (document.body) {
+            document.body.appendChild(overlay);
+        } else if (document.documentElement) {
+            document.documentElement.appendChild(overlay);
+            var bodyWatcher = new MutationObserver(function() {
+                if (document.body) {
+                    bodyWatcher.disconnect();
+                    document.body.appendChild(overlay);
+                }
+            });
+            bodyWatcher.observe(document.documentElement, { childList: true });
+        }
+
+        if (document.documentElement) document.documentElement.style.overflow = 'hidden';
+        if (document.body) document.body.style.overflow = 'hidden';
 
         var backBtn = document.getElementById('focuslens-ig-back-btn');
         if (backBtn) {
@@ -215,15 +258,6 @@
         } else {
             removeBlockOverlay();
         }
-    }
-
-    function rewriteHomeLinks() {
-        try {
-            var links = document.querySelectorAll('a[href="/"]');
-            for (var i = 0; i < links.length; i++) {
-                links[i].href = DIRECT_INBOX_URL;
-            }
-        } catch (e) {}
     }
 
     // Intercept SPA navigation (pushState & replaceState)
@@ -259,7 +293,7 @@
             showFullStudyOverlay();
             return;
         }
-        var link = e.target.closest('a');
+        var link = e.target && e.target.closest ? e.target.closest('a') : null;
         if (link && link.href) {
             if (isReelsPage(link.href)) {
                 e.preventDefault();
@@ -269,15 +303,6 @@
             }
         }
     }, true);
-
-    // Early check from local storage in case sync client is still initializing
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get(['lockin_sync_state'], function(res) {
-            if (res && res.lockin_sync_state && res.lockin_sync_state.state === 'STUDY' && res.lockin_sync_state.remaining_seconds > 0) {
-                showFullStudyOverlay();
-            }
-        });
-    }
 
     // Initial check right at document_start
     enforceBlockRules();
@@ -293,7 +318,7 @@
         enforceBlockRules();
     });
 
-    // Observe DOM changes to kill media if blocked
+    // Observe DOM changes to kill media if blocked and guarantee overlay stays
     var observer = new MutationObserver(function() {
         if (isStudyModeActive()) {
             killMedia();

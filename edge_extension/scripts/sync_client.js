@@ -1,7 +1,7 @@
 /**
  * Lockin-Inator Edge Extension Local Wi-Fi Sync Client.
- * Connects to the local PC Hub (http://127.0.0.1:8765) to synchronize
- * Study and Break sessions across PC, Browser, and Android Phone.
+ * Connects via persistent keepalive port and background service worker
+ * to the local PC Hub (http://127.0.0.1:8765).
  * Provides window.LockinSync for all site blocker scripts.
  */
 
@@ -11,9 +11,6 @@
   if (window.LockinSync) {
     return;
   }
-
-  const SYNC_URL = "http://127.0.0.1:8765/api/status";
-  const STREAM_URL = "http://127.0.0.1:8765/api/stream";
 
   const DEFAULT_BLOCKED_SITES = [
     "instagram.com",
@@ -58,6 +55,7 @@
   }
 
   function applyNewState(newState) {
+    if (!newState) return;
     const prevState = syncState.state;
     const prevConnected = syncState.connected;
     const prevSeconds = syncState.remaining_seconds;
@@ -65,7 +63,7 @@
     syncState = {
       ...syncState,
       ...newState,
-      connected: newState.connected !== undefined ? newState.connected : true,
+      connected: newState.connected !== undefined ? newState.connected : syncState.connected,
     };
 
     if (Array.isArray(newState.blocked_sites) && newState.blocked_sites.length > 0) {
@@ -75,40 +73,6 @@
     updateOverlayUI();
 
     if (prevState !== syncState.state || prevConnected !== syncState.connected || Math.abs(prevSeconds - syncState.remaining_seconds) > 1) {
-      notifyListeners();
-    }
-  }
-
-  function handleDisconnect() {
-    // Only disconnect if background worker isn't providing a connected state
-    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get(["lockin_sync_state"], function (res) {
-        if (!res || !res.lockin_sync_state || !res.lockin_sync_state.connected) {
-          executeDisconnect();
-        }
-      });
-    } else {
-      executeDisconnect();
-    }
-  }
-
-  function executeDisconnect() {
-    const wasActive = syncState.connected || syncState.state !== "IDLE";
-    syncState.connected = false;
-    syncState.state = "IDLE";
-    syncState.remaining_seconds = 0;
-
-    updateOverlayUI();
-
-    // Immediately eradicate any full study lockout screen if PC app is offline
-    const existing = document.getElementById("focuslens-block-overlay");
-    if (existing && existing.getAttribute("data-overlay-type") === "full-study") {
-      existing.remove();
-      if (document.documentElement) document.documentElement.style.overflow = "";
-      if (document.body) document.body.style.overflow = "";
-    }
-
-    if (wasActive) {
       notifyListeners();
     }
   }
@@ -134,12 +98,12 @@
 
     const timeStr = formatted;
 
-    if (syncState.connected && syncState.state === "STUDY") {
+    if (syncState.state === "STUDY" && syncState.remaining_seconds > 0) {
       syncBadge.style.backgroundColor = "#032b43";
       syncBadge.style.color = "#38bdf8";
       syncBadge.style.border = "1px solid #0284c7";
       syncBadge.textContent = `🔒 Study Mode Synced: ${timeStr} remaining (PC + Phone + Browser)`;
-    } else if (syncState.connected && syncState.state === "BREAK") {
+    } else if (syncState.state === "BREAK" && syncState.remaining_seconds > 0) {
       syncBadge.style.backgroundColor = "#064e3b";
       syncBadge.style.color = "#34d399";
       syncBadge.style.border = "1px solid #059669";
@@ -152,7 +116,7 @@
     }
   }
 
-  // 1. Initial check from chrome.storage.local
+  // 1. Initial state check from chrome.storage.local
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(["lockin_sync_state"], function (res) {
       if (res && res.lockin_sync_state) {
@@ -170,66 +134,57 @@
     });
   }
 
-  // 2. Poll status endpoint directly (with CSP catch)
-  async function pollSyncStatus() {
+  // 2. Persistent keepalive port connection (keeps service worker active!)
+  let syncPort = null;
+  function connectSyncPort() {
+    if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.connect) return;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      const res = await fetch(SYNC_URL, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      syncPort = chrome.runtime.connect({ name: "lockin_sync" });
 
-      if (res.ok) {
-        const data = await res.json();
-        applyNewState({ ...data, connected: true });
-      } else {
-        handleDisconnect();
-      }
-    } catch (e) {
-      // Content script fetch may fail due to page CSP (e.g. on Instagram).
-      // Background worker handles actual fetching, so do not immediately disconnect here.
-    }
-  }
-
-  // 3. Connect to live SSE stream
-  let eventSource = null;
-  function connectEventSource() {
-    try {
-      if (eventSource) {
-        eventSource.close();
-      }
-      eventSource = new EventSource(STREAM_URL);
-      eventSource.onmessage = function (event) {
-        try {
-          const data = JSON.parse(event.data);
-          applyNewState({ ...data, connected: true });
-        } catch (err) {}
-      };
-      eventSource.onerror = function () {
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
+      syncPort.onMessage.addListener(function (msg) {
+        if (!msg) return;
+        if (msg.type === "STATE_UPDATE" && msg.state) {
+          applyNewState(msg.state);
+        } else if (msg.type === "TICK" && typeof msg.remaining_seconds === "number") {
+          syncState.remaining_seconds = msg.remaining_seconds;
+          updateOverlayUI();
         }
-        setTimeout(connectEventSource, 5000);
-      };
+      });
+
+      syncPort.onDisconnect.addListener(function () {
+        syncPort = null;
+        setTimeout(connectSyncPort, 1500);
+      });
     } catch (e) {
-      // SSE blocked by page CSP
+      setTimeout(connectSyncPort, 2000);
     }
   }
 
-  // 4. Local tick timer so countdown drops smoothly every second
+  connectSyncPort();
+
+  // 3. Keepalive ping every second (keeps worker active and requests fresh state)
+  setInterval(function () {
+    if (syncPort) {
+      try {
+        syncPort.postMessage({ type: "POLL_NOW" });
+      } catch (e) {}
+    } else {
+      connectSyncPort();
+    }
+  }, 1000);
+
+  // 4. Smooth local countdown timer drops every second
   setInterval(function () {
     if (syncState.remaining_seconds > 0 && (syncState.state === "STUDY" || syncState.state === "BREAK")) {
       syncState.remaining_seconds--;
       updateOverlayUI();
+    } else if (syncState.remaining_seconds <= 0 && syncState.state === "STUDY") {
+      syncState.state = "IDLE";
+      notifyListeners();
     }
   }, 1000);
 
-  // Initial network attempts
-  pollSyncStatus();
-  setInterval(pollSyncStatus, 2000);
-  connectEventSource();
-
-  // Watch for dynamic block overlays added to the DOM
+  // 5. Watch for dynamic block overlays added to DOM
   const observer = new MutationObserver(() => {
     if (document.querySelector(".focuslens-card")) {
       updateOverlayUI();
@@ -279,13 +234,19 @@
           payload: { action: action, duration_minutes: durationMinutes }
         });
       }
+    },
+    closeTab: function () {
+      if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({ type: "CLOSE_CURRENT_TAB" });
+      }
       try {
-        fetch("http://127.0.0.1:8765/api/action", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: action, duration_minutes: durationMinutes })
-        }).catch(function() {});
+        window.close();
       } catch (e) {}
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.replace("about:blank");
+      }
     },
     onStateChange: function (callback) {
       if (typeof callback === "function") {
@@ -293,6 +254,10 @@
         callback(syncState);
       }
     },
-    forcePoll: pollSyncStatus
+    forcePoll: function () {
+      if (syncPort) {
+        try { syncPort.postMessage({ type: "POLL_NOW" }); } catch (e) {}
+      }
+    }
   };
 })();

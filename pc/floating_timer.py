@@ -1,29 +1,36 @@
 """
-Floating Timer Widget for Lockin-Inator PC.
-A sleek, draggable, always-on-top pill widget displayed on-screen during
-Study and Break sessions, keeping the live timer visible without being distracting.
-Includes optional Physics Mode with screen bouncing, momentum sliding, friction deceleration,
-jiggle impact effects, and hold-to-stop physics that automatically reverts to normal 1.0x size.
-"""
-import math
-import random
-import time
-from pathlib import Path
-from PyQt6 import QtCore, QtGui, QtWidgets
+Lockin-Inator Floating Timer Widget (PyQt6).
 
-ASSETS_DIR = Path(__file__).resolve().parent / "assets"
-LOGO_PATH = ASSETS_DIR / "lockin_logo.png"
+A sleek, premium, frameless, translucent floating pill that remains on top
+of all applications to show the current countdown (Study or AI Review break).
+
+Supports:
+- Pure pill capsule geometry (half-circle ends)
+- Momentum physics with true tangential release velocity (spins & arcs fling correctly)
+- Clean physical wall reflection and friction deceleration
+- Dynamic scaling: 1.5x size when in motion, shrinking back to 1.0x when held still or at rest
+- Click-and-drag positioning
+- Double-click to open main dashboard
+- Right-click context menu (Physics toggle, fling, open dashboard, end session)
+"""
+
+import math
+import time
+from typing import Optional
+
+from PyQt6 import QtCore, QtGui, QtWidgets
 
 
 class FloatingTimerWidget(QtWidgets.QWidget):
-    lock_in_early_signal = QtCore.pyqtSignal()
     open_dashboard_signal = QtCore.pyqtSignal()
+    lock_in_early_signal = QtCore.pyqtSignal()
     end_session_signal = QtCore.pyqtSignal()
     physics_toggled_signal = QtCore.pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.state = "IDLE"
+
+        self.state = "IDLE"  # "STUDY", "BREAK", "IDLE"
         self._drag_pos = None
         self._is_moved_by_user = False
 
@@ -31,15 +38,13 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self._settings = QtCore.QSettings("LockinInator", "FloatingTimer")
         self.physics_enabled = self._settings.value("physics_enabled", False, type=bool)
 
-        self.scale_factor = 1.0  # Starts at 1.0; blooms to 1.5x during active physics movement
+        self.scale_factor = 1.0  # 1.0x normal, 1.5x during active motion
         self.vx = 0.0
         self.vy = 0.0
         self._pos_x = 0.0
         self._pos_y = 0.0
         self._is_held = False
         self._drag_samples = []
-        self._jiggle_frames = 0
-        self._jiggle_offset_y = 0.0
 
         # Physics simulation timer (60 FPS)
         self._physics_timer = QtCore.QTimer(self)
@@ -63,7 +68,7 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self.main_layout.setContentsMargins(4, 4, 4, 4)
         self.main_layout.setSpacing(0)
 
-        # Background frame (Pill)
+        # Background frame (Pill Capsule)
         self.frame = QtWidgets.QFrame(self)
         self.frame.setObjectName("pillFrame")
 
@@ -90,6 +95,12 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.OpenHandCursor))
         self._update_styles()
 
+    def _apply_dimensions(self):
+        sf = self.scale_factor
+        h = int(46 * sf)
+        w = int(240 * sf) if self.state == "BREAK" else int(170 * sf)
+        self.setFixedSize(w, h)
+
     def _set_scale(self, scale: float):
         """Smoothly scale between normal (1.0x) and physics (1.5x) while maintaining center point."""
         if abs(self.scale_factor - scale) < 0.01:
@@ -107,16 +118,6 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self._pos_y = float(new_y)
         self.move(new_x, new_y)
 
-    def _apply_dimensions(self):
-        sf = self.scale_factor
-        h = int(46 * sf)
-        self.setFixedHeight(h)
-        if self.state == "BREAK":
-            w = int(240 * sf)
-        else:
-            w = int(170 * sf)
-        self.setFixedWidth(w)
-
     def _apply_frame_layout_margins(self):
         sf = self.scale_factor
         h_pad = int(12 * sf)
@@ -127,7 +128,8 @@ class FloatingTimerWidget(QtWidgets.QWidget):
 
     def _update_styles(self):
         sf = self.scale_factor
-        border_radius = int(19 * sf)
+        h = int(46 * sf)
+        border_radius = int(h / 2)  # True pill formula: half of height gives perfect rounded caps
         timer_font_size = int(16 * sf)
         icon_font_size = int(15 * sf)
         btn_font_size = int(11 * sf)
@@ -184,7 +186,6 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         self._settings.setValue("physics_enabled", self.physics_enabled)
 
         if self.physics_enabled:
-            # When physics is first turned on, kick off with a natural glide
             self.vx = 4.5
             self.vy = 3.2
             self._set_scale(1.5)
@@ -196,7 +197,6 @@ class FloatingTimerWidget(QtWidgets.QWidget):
             self._physics_timer.stop()
             self.vx = 0.0
             self.vy = 0.0
-            self._jiggle_frames = 0
             self._set_scale(1.0)
             self._keep_within_current_screen()
 
@@ -215,22 +215,26 @@ class FloatingTimerWidget(QtWidgets.QWidget):
             self.move(new_x, new_y)
 
     def _on_physics_tick(self):
-        if not self.physics_enabled or self._is_held or not self.isVisible():
+        if not self.physics_enabled or not self.isVisible():
             return
 
-        # Jiggle decay
-        if self._jiggle_frames > 0:
-            self._jiggle_frames -= 1
-            self._jiggle_offset_y = math.sin(self._jiggle_frames * 0.9) * 3.0
-        else:
-            self._jiggle_offset_y = 0.0
+        if self._is_held:
+            # If the user holds the widget stationary, automatically revert back to 1.0x
+            now = time.time()
+            if self._drag_samples:
+                t_last, _ = self._drag_samples[-1]
+                if now - t_last > 0.12:
+                    self.vx = 0.0
+                    self.vy = 0.0
+                    if abs(self.scale_factor - 1.0) > 0.01:
+                        self._set_scale(1.0)
+            return
 
         current_speed = math.hypot(self.vx, self.vy)
 
-        # Natural deceleration / friction model:
-        # Loses ~1.2% speed per frame, sliding naturally across the monitor and smoothly stopping
-        if current_speed > 0.18:
-            # Active movement -> maintain 1.5x scale
+        # Natural deceleration / momentum model:
+        # Moves along clean physical trajectory with 1.2% friction per frame
+        if current_speed > 0.16:
             if abs(self.scale_factor - 1.5) > 0.01:
                 self._set_scale(1.5)
 
@@ -238,7 +242,6 @@ class FloatingTimerWidget(QtWidgets.QWidget):
             self.vx *= friction
             self.vy *= friction
 
-            # Advance position
             self._pos_x += self.vx
             self._pos_y += self.vy
 
@@ -249,53 +252,39 @@ class FloatingTimerWidget(QtWidgets.QWidget):
 
             if screen:
                 geo = screen.availableGeometry()
-                bounced = False
-                restitution = 0.75  # Absorbs 25% energy on wall impact
+                restitution = 0.82  # Physical bounce absorption
 
                 if self._pos_x < geo.left():
                     self._pos_x = float(geo.left())
-                    self.vx = abs(self.vx) * restitution + random.uniform(-0.15, 0.15)
-                    bounced = True
+                    self.vx = abs(self.vx) * restitution
                 elif self._pos_x + self.width() > geo.right():
                     self._pos_x = float(geo.right() - self.width())
-                    self.vx = -(abs(self.vx) * restitution + random.uniform(-0.15, 0.15))
-                    bounced = True
+                    self.vx = -abs(self.vx) * restitution
 
                 if self._pos_y < geo.top():
                     self._pos_y = float(geo.top())
-                    self.vy = abs(self.vy) * restitution + random.uniform(-0.15, 0.15)
-                    bounced = True
+                    self.vy = abs(self.vy) * restitution
                 elif self._pos_y + self.height() > geo.bottom():
                     self._pos_y = float(geo.bottom() - self.height())
-                    self.vy = -(abs(self.vy) * restitution + random.uniform(-0.15, 0.15))
-                    bounced = True
+                    self.vy = -abs(self.vy) * restitution
 
-                if bounced:
-                    self._trigger_jiggle()
-
-            self.move(int(self._pos_x), int(self._pos_y + self._jiggle_offset_y))
+            self.move(int(self._pos_x), int(self._pos_y))
 
         else:
-            # Speed is near zero -> coast to a full stop and revert to normal 1.0x size!
+            # Below motion threshold -> coast to rest at normal 1.0x size
             self.vx = 0.0
             self.vy = 0.0
             if abs(self.scale_factor - 1.0) > 0.01:
                 self._set_scale(1.0)
-
-            if self._jiggle_frames > 0:
-                self.move(int(self._pos_x), int(self._pos_y + self._jiggle_offset_y))
-
-    def _trigger_jiggle(self):
-        self._jiggle_frames = 10
+            self.move(int(self._pos_x), int(self._pos_y))
 
     def _kickstart_physics(self):
         """Fling the widget into motion at 1.5x size."""
-        angle = random.uniform(0.2, math.pi * 1.8)
+        angle = 0.8
         speed = 8.0
         self.vx = math.cos(angle) * speed
         self.vy = math.sin(angle) * speed
         self._set_scale(1.5)
-        self._trigger_jiggle()
 
     def show_widget(self, state: str, remaining_seconds: int):
         self.state = state
@@ -334,11 +323,13 @@ class FloatingTimerWidget(QtWidgets.QWidget):
         super().hideEvent(event)
         self._physics_timer.stop()
 
-    # Dragging & Throwing Mechanics
+    # Dragging & Momentum Physics Mechanics
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             self._is_held = True
+            self.vx = 0.0
+            self.vy = 0.0
             now = time.time()
             self._drag_samples = [(now, event.globalPosition().toPoint())]
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.ClosedHandCursor))
@@ -346,15 +337,28 @@ class FloatingTimerWidget(QtWidgets.QWidget):
 
     def mouseMoveEvent(self, event):
         if event.buttons() == QtCore.Qt.MouseButton.LeftButton and self._drag_pos:
-            target_pos = event.globalPosition().toPoint() - self._drag_pos
-            self.move(target_pos)
+            cur_global = event.globalPosition().toPoint()
+            target_pos = cur_global - self._drag_pos
             self._pos_x = float(target_pos.x())
             self._pos_y = float(target_pos.y())
             self._is_moved_by_user = True
+            self.move(target_pos)
 
             now = time.time()
-            self._drag_samples.append((now, event.globalPosition().toPoint()))
-            self._drag_samples = [(t, p) for t, p in self._drag_samples if now - t <= 0.25]
+            self._drag_samples.append((now, cur_global))
+            # Keep samples from the last 0.12 seconds for precise tangential velocity calculation
+            self._drag_samples = [(t, p) for t, p in self._drag_samples if now - t <= 0.12]
+
+            # Scale to 1.5x while actively dragging with velocity
+            if self.physics_enabled and len(self._drag_samples) >= 2:
+                t0, p0 = self._drag_samples[0]
+                dt = now - t0
+                if dt > 0.02:
+                    dist = math.hypot(cur_global.x() - p0.x(), cur_global.y() - p0.y())
+                    if dist / dt > 60.0 and abs(self.scale_factor - 1.5) > 0.01:
+                        self._set_scale(1.5)
+                        self._drag_pos = cur_global - self.frameGeometry().topLeft()
+
             event.accept()
 
     def mouseReleaseEvent(self, event):
@@ -362,29 +366,65 @@ class FloatingTimerWidget(QtWidgets.QWidget):
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.OpenHandCursor))
             self._is_held = False
 
-            if self.physics_enabled and len(self._drag_samples) >= 2:
-                t_start, p_start = self._drag_samples[0]
-                t_end, p_end = self._drag_samples[-1]
-                dt = t_end - t_start
-                dx = p_end.x() - p_start.x()
-                dy = p_end.y() - p_start.y()
-                dist = math.hypot(dx, dy)
-                speed_px_sec = dist / max(dt, 0.001)
+            now = time.time()
+            recent_samples = [(t, p) for t, p in self._drag_samples if now - t <= 0.10]
 
-                # "when held still it should automatically revert back to its normal size"
-                if dt >= 0.08 and speed_px_sec < 90.0:
+            if self.physics_enabled and len(recent_samples) >= 2:
+                t_last, p_last = recent_samples[-1]
+
+                # If the user held the widget stationary before releasing, stop all movement and revert to 1.0x
+                if now - t_last > 0.06:
                     self.vx = 0.0
                     self.vy = 0.0
-                    self._set_scale(1.0)  # Revert immediately to normal 1.0x size!
-                elif speed_px_sec >= 90.0:
-                    # User threw/flung the widget -> impart velocity & expand to 1.5x size!
-                    scale = 1.0 / (dt * 60.0)
-                    self.vx = max(-14.0, min(14.0, dx * scale))
-                    self.vy = max(-14.0, min(14.0, dy * scale))
-                    self._set_scale(1.5)
-                    self._trigger_jiggle()
-            elif self.physics_enabled and len(self._drag_samples) < 2:
-                # Simple click without movement: revert to 1.0x normal size
+                    self._set_scale(1.0)
+                else:
+                    # Calculate true instantaneous tangential velocity vector (dP/dt).
+                    # When spun in a circle, this correctly calculates the tangent to the curve.
+                    total_weight = 0.0
+                    weighted_vx = 0.0
+                    weighted_vy = 0.0
+
+                    for i in range(1, len(recent_samples)):
+                        t_prev, p_prev = recent_samples[i - 1]
+                        t_cur, p_cur = recent_samples[i]
+                        dt = t_cur - t_prev
+                        if dt > 0.0001:
+                            inst_vx = (p_cur.x() - p_prev.x()) / dt
+                            inst_vy = (p_cur.y() - p_prev.y()) / dt
+                            # Weight recent segments more heavily to capture the exact release tangent
+                            weight = float(i * i)
+                            weighted_vx += inst_vx * weight
+                            weighted_vy += inst_vy * weight
+                            total_weight += weight
+
+                    if total_weight > 0.0:
+                        vel_x_sec = weighted_vx / total_weight
+                        vel_y_sec = weighted_vy / total_weight
+                        speed_sec = math.hypot(vel_x_sec, vel_y_sec)
+
+                        # Threshold: if thrown faster than 80 px/sec, launch with momentum!
+                        if speed_sec >= 80.0:
+                            frame_vx = (vel_x_sec / 60.0) * 1.15
+                            frame_vy = (vel_y_sec / 60.0) * 1.15
+
+                            max_spd = 22.0
+                            cur_spd = math.hypot(frame_vx, frame_vy)
+                            if cur_spd > max_spd:
+                                frame_vx = (frame_vx / cur_spd) * max_spd
+                                frame_vy = (frame_vy / cur_spd) * max_spd
+
+                            self.vx = frame_vx
+                            self.vy = frame_vy
+                            self._set_scale(1.5)
+                        else:
+                            self.vx = 0.0
+                            self.vy = 0.0
+                            self._set_scale(1.0)
+                    else:
+                        self.vx = 0.0
+                        self.vy = 0.0
+                        self._set_scale(1.0)
+            else:
                 self.vx = 0.0
                 self.vy = 0.0
                 self._set_scale(1.0)

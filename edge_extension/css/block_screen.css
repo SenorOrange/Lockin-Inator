@@ -2,6 +2,11 @@
    FocusLens / Lockin-Inator Unskippable Block Screen Styles
    ========================================================================== */
 
+body.focuslens-study-locked > *:not(#focuslens-block-overlay) {
+    display: none !important;
+    visibility: hidden !important;
+}
+
 #focuslens-block-overlay {
     position: fixed !important;
     inset: 0 !important;
@@ -20,9 +25,13 @@
     box-sizing: border-box !important;
     overflow: hidden !important;
     user-select: none !important;
+    pointer-events: auto !important;
 }
 
 .focuslens-card {
+    position: relative !important;
+    z-index: 2147483647 !important;
+    pointer-events: auto !important;
     background: rgba(15, 23, 42, 0.94) !important;
     backdrop-filter: blur(28px) !important;
     -webkit-backdrop-filter: blur(28px) !important;
